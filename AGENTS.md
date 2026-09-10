@@ -14,7 +14,7 @@
 
 ## Arbeitsaufträge (Pipeline)
 
-Auftrag (Martin, Telegram oder Issue) → ggf. Spec (`docs/specs/`) → **GitHub Issue** (Template, Akzeptanzkriterien, `agent:ready`) → Lead delegiert → Coder im eigenen Worktree → Draft-PR (`Closes #N`) → CI grün → Reviewer-Run → `agent:review` → **Merge nur durch Martin** bei grünem CI.
+Auftrag (Martin, Telegram oder Issue) → ggf. Spec (`docs/specs/`) → **GitHub Issue** (Template, Akzeptanzkriterien, `agent:ready`) → Lead delegiert (`agent:in-progress`) → Coder im eigenen Worktree → Draft-PR (`Closes #N`) → CI grün → `agent:review` (durch den Coder) → Reviewer-Run → Lead hebt Draft-Status auf → **Merge nur durch Martin** bei grünem CI.
 
 Labels — jeder Übergang hat genau einen Owner, sonst bleiben abgebrochene Runs falsch etikettiert liegen:
 
@@ -41,14 +41,23 @@ gh pr create --draft           # Body: Closes #N + Akzeptanzkriterien
 ```
 
 Aufräumen erst **nach dem Merge**, und zwar vom Repo-Root aus (ein Worktree kann sich
-nicht selbst entfernen):
+nicht selbst entfernen). **Owner: Lead** — der Coder-Run ist mit dem PR beendet und läuft
+zum Merge-Zeitpunkt nicht mehr. Jeder Befehl einzeln, nie verkettet (siehe D2):
 
 ```bash
-cd <repo-root> && git checkout main && git pull
+# Arbeitsverzeichnis: <repo-root>, nicht der Worktree
+git checkout main
+git pull
 git worktree remove worktrees/<issue-nr>-<slug>
 git worktree prune
-git branch -d feat/<issue-nr>-<slug>
+git branch -D feat/<issue-nr>-<slug>
 ```
+
+- **`-D`, nicht `-d`:** Wird der PR per Squash gemerged (so geschehen bei PR #2), landen die
+  Branch-Commits nicht als solche auf `main`; `git branch -d` verweigert das Löschen dann als
+  „not fully merged". `-D` ist nach einem gemergten PR korrekt, weil der Inhalt via Squash
+  bereits auf `main` liegt. Vorher prüfen, dass der PR wirklich gemerged ist
+  (`gh pr view <n> --json state,mergedAt`).
 
 - **Push immer als `git push -u origin HEAD`.** `git worktree add -b <branch> origin/main`
   setzt den Upstream auf `origin/main`; ein blankes `git push` bricht deshalb ab und Git
@@ -64,9 +73,13 @@ git branch -d feat/<issue-nr>-<slug>
 
 - **D1 — Merge nur durch Martin** bei vollständig grünem CI. Agenten mergen nie (`gh pr merge` verboten).
 - **D2 — Budget-Guards:** Delegationen immer mit `--max-turns`; kein `--dangerously-skip-permissions` ohne enge `--allowedTools`. Minimal-Set, damit ein headless-Run nicht mitten in der Aufgabe an einer Freigabe hängen bleibt:
-  - Coder: `Read`, `Write`, `Edit`, `Glob`, `Grep`, `Bash(git *)`, `Bash(gh issue view *)`, `Bash(gh pr create *)`, `Bash(gh pr view *)`, `Bash(gh run list *)`, `Bash(gh run view *)`, `Bash(gh issue edit *)` (für das Label)
-  - Reviewer: `Read`, `Glob`, `Grep`, `Bash(git diff *)`, `Bash(git log *)`, `Bash(gh pr view *)`, `Bash(gh pr diff *)`, `Bash(gh pr comment *)` — **kein** `Write`/`Edit`
-  - In headless-Runs Shell-Befehle einzeln absetzen: verkettete Kommandos (`a; b`) lösen eine eigene Freigabe aus, auch wenn jeder Teil erlaubt wäre.
+  - Coder: `Read`, `Write`, `Edit`, `Glob`, `Grep`, `Bash(git status *)`, `Bash(git diff *)`, `Bash(git log *)`, `Bash(git add *)`, `Bash(git commit *)`, `Bash(git push -u origin HEAD)`, `Bash(gh issue view *)`, `Bash(gh issue edit *)` (für das Label), `Bash(gh label list *)`, `Bash(gh pr create *)`, `Bash(gh pr view *)`, `Bash(gh pr comment *)`, `Bash(gh run list *)`, `Bash(gh run view *)`
+  - Reviewer: `Read`, `Glob`, `Grep`, `Bash(git diff *)`, `Bash(git log *)`, `Bash(gh issue view *)`, `Bash(gh pr view *)`, `Bash(gh pr diff *)`, `Bash(gh pr comment *)` — **kein** `Write`/`Edit`
+  - Lead (Delegation, Labels, Draft→Ready, Cleanup): `Bash(gh issue create *)`, `Bash(gh issue edit *)`, `Bash(gh issue view *)`, `Bash(gh pr view *)`, `Bash(gh pr ready *)`, `Bash(gh run list *)`, `Bash(gh run view *)`, `Bash(gh label list *)`, `Bash(git worktree *)`, `Bash(git checkout main)`, `Bash(git pull)`, `Bash(git branch -D *)` — **kein** `gh pr merge` (D1)
+  - **Kein blankes `Bash(git *)`.** Das erlaubt exakt das `git push origin HEAD:main`, vor dem
+    D1 warnt. Der Push-Guard wird als exakte Form `Bash(git push -u origin HEAD)` freigegeben;
+    jede andere Push-Variante muss an einer Freigabe hängen bleiben.
+  - In headless-Runs Shell-Befehle einzeln absetzen: verkettete Kommandos (`a; b`) lösen eine eigene Freigabe aus, auch wenn jeder Teil erlaubt wäre. Das gilt auch für die Beispielblöcke in dieser Datei.
 - **D3 — Kleine PRs:** Ein PR = ein Issue. Keine Scope-Ausweitung ohne neues Issue.
 - **D4 — Akzeptanzkriterien:** Ein Issue gilt erst erledigt, wenn jede Akzeptanzkriterium-Checkliste abgehakt/automatisiert verifiziert ist. Kriterien, die außerhalb der eigenen Rolle liegen (Reviewer-Run, Merge), hakt man **nicht** selbst ab, sondern benennt sie im PR mit Owner als offen.
 - **D5 — Doku bleibt im Repo:** Ergebnisse, Specs, ADRs → `docs/`; niemals nur lokal.
@@ -76,7 +89,7 @@ git branch -d feat/<issue-nr>-<slug>
 
 ```
 docs/              Spec-Doku (01-konzept … 04-spezifikation), workflow.md
-docs/specs/        Feature-Specs (bei größeren Aufträgen, vor dem Issue)
+docs/specs/        Feature-Specs (bei Bedarf — noch nicht angelegt, entsteht beim ersten größeren Auftrag)
 docs/experiments/  Ergebnisse von Experiment-Issues (z.B. pilot-pipeline.md)
 agentic-workflow/  Research (entwurf, report, quellen)
 .github/           ISSUE_TEMPLATE/, workflows/ci.yml

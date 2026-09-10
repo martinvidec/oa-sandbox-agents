@@ -15,13 +15,13 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
   │    worktrees/<issue-nr>-<slug>, Branch feat/<issue-nr>-<slug>
   │    Label: agent:in-progress
   4. Coder: implementiert, committet, `git push -u origin HEAD`, Draft-PR („Closes #N")
-  │    Label: agent:review (durch den Coder, sobald PR offen + CI grün)
   5. CI (GitHub Actions) läuft — muss grün sein
+  │    Label: agent:review — setzt der Coder, sobald Draft-PR offen UND CI grün belegt ist
   6. Reviewer-Run (2. Claude-Code-Instanz, sauberer Kontext) → Review-Schleife unten
   7. Lead: hebt Draft-Status auf; meldet an Martin (Telegram-Thread):
   │    „PR #N fertig, CI grün, Review-Befunde: …"
   8. MARTIN merged (oder lehnt/ändert)  ← Human-in-the-Loop, keine Ausnahme
-  9. Issue schließt automatisch („Closes #N"); Worktree entfernen (Ablauf: AGENTS.md)
+  9. Issue schließt automatisch („Closes #N"); Lead entfernt den Worktree (Ablauf: AGENTS.md)
 ```
 
 ## Zuständigkeiten pro Schritt
@@ -34,19 +34,31 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
 | Push | Coder | `git push -u origin HEAD` (nie `HEAD:main` — D1) |
 | PR öffnen | Coder | `gh pr create --draft` (Body: Closes #N + Akzeptanzkriterien) |
 | Label `agent:review` | Coder | `gh issue edit <n> --add-label agent:review --remove-label agent:in-progress` |
-| Review | Reviewer | separater Claude-Code-Run auf dem PR-Diff, `--max-turns 15` |
-| Draft → Ready | Lead | `gh pr ready <n>` nach grünem CI + abgeschlossenem Review |
+| Review | Reviewer | separater Claude-Code-Run auf dem PR-Diff, `--max-turns 15`, Tool-Set siehe AGENTS.md D2 |
+| Draft → Ready | Lead | `gh pr ready <n>` nach grünem CI + abgeschlossenem Review; Tool-Set: `Bash(gh pr ready *)`, `Bash(gh pr view *)`, `Bash(gh run list *)`, `Bash(gh run view *)` (vollständiges Lead-Set: AGENTS.md D2) |
 | Merge | **Martin** | GitHub UI oder `gh pr merge` |
-| Worktree entfernen | Coder/Lead | nach Merge, vom Repo-Root (AGENTS.md) |
+| Worktree entfernen | **Lead** | nach Merge, vom Repo-Root, Befehle einzeln (AGENTS.md) — nicht der Coder, dessen Run mit dem PR endet |
 
 ## Review-Schleife
 
 1. Der Lead startet den Reviewer-Run — **eigener Prozess, sauberer Kontext**, kein Wissen aus dem Coding-Run.
-2. Reviewt wird der vollständige PR-Diff (`gh pr diff <n>`) gegen AGENTS.md (D3, D4) und die Akzeptanzkriterien des Issues.
+2. Reviewt wird der vollständige PR-Diff (`gh pr diff <n>`) gegen AGENTS.md (D3, D4) und die Akzeptanzkriterien des Issues. Dafür braucht der Reviewer `Bash(gh issue view *)` in seinem Tool-Set — ohne das kommt er nicht an die Akzeptanzkriterien und kann D4 nicht prüfen (im Pilot-Run empirisch gescheitert).
 3. Befunde gehen als PR-Kommentare raus; der Reviewer editiert **keinen** Code. Ohne Befunde: ein Kommentar „Review ok, keine Befunde" — Schweigen zählt nicht als Freigabe.
 4. Nachbesserung macht der Coder in **demselben** Worktree/Branch (sonst bricht „ein Issue = ein Worktree = ein PR").
 5. Maximal zwei Schleifen; danach `needs-human` und Eskalation an Martin.
 6. Akzeptanzkriterien, die nicht der Coder erfüllen kann, werden im Issue mit Owner markiert — `(Reviewer)`, `(Martin)`. Der Coder hakt sie nicht ab, sondern führt sie im PR als offen mit Owner.
+
+## Häkchen nur mit Beleg
+
+Status- und DoD-Häkchen (Issue-Checklisten, Protokolle in `docs/experiments/`, PR-Beschreibungen)
+werden **erst gesetzt, wenn der Beleg vorliegt** — nicht vorausschauend, weil man das Ergebnis
+erwartet. Im Pilot-Durchlauf waren zwei Status als erledigt protokolliert, bevor der CI-Lauf
+überhaupt durch war.
+
+- „CI grün" erst nach `gh run list --branch <branch>` bzw. `gh run view <id>` mit `conclusion: success`.
+- „Review erledigt" erst, wenn der Review-Kommentar am PR steht (Schweigen zählt nicht).
+- „Merged" erst nach `gh pr view <n> --json state,mergedAt`.
+- Ist der Beleg noch offen, bleibt das Häkchen leer und der Punkt wird mit Owner als offen benannt (D4).
 
 ## Setup-Mechanismus für beliebige Repos
 
