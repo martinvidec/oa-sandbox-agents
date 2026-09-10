@@ -1,0 +1,36 @@
+name: Feature / Arbeitsauftrag für Agenten
+description: Neues Feature oder Arbeitsauftrag — Grundlage für Agenten-Delegation
+labels: ["agent:ready"]
+body:
+  - type: textarea
+    id: ziel
+    attributes:
+      label: Ziel
+      description: Was soll erreicht werden? Ein Satz, prägnant.
+    validations:
+      required: true
+  - type: textarea
+    id: akzeptanz
+    attributes:
+      label: Akzeptanzkriterien
+      description: Checkliste, idealerweise automatisierbar prüfbar.
+      value: "- [ ] \n- [ ] "
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope-Grenzen
+      description: Was ist explizit NICHT Teil dieses Auftrags?
+    validations:
+      required: true
+  - type: textarea
+    id: agent-hinweise
+    attributes:
+      label: Agent-Hinweise
+      description: Kontext, betroffene Dateien, Spec-Referenz, Caveats — alles, was der Agent ohne Rückfragen braucht.
+  - type: dropdown
+    id: groesse
+    attributes:
+      label: Größe
+      options: ["Klein", "Mittel", "Groß (Spec nötig)"]

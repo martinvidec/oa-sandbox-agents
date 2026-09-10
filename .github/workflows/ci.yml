@@ -1,0 +1,32 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: AGENTS.md und CLAUDE.md vorhanden
+        run: |
+          test -f AGENTS.md
+          test -f CLAUDE.md
+      - name: YAML-Validierung (Templates + Workflows)
+        run: |
+          python3 - <<'PYEOF'
+          import glob, sys
+          import yaml
+          bad = []
+          for pattern in ("ISSUE_TEMPLATE/*.yml", "workflows/*.yml"):
+              for p in glob.glob(".github/" + pattern):
+                  try:
+                      yaml.safe_load(open(p))
+                  except Exception as e:
+                      bad.append("%s: %s" % (p, e))
+          if bad:
+              print("\n".join(bad))
+              sys.exit(1)
+          print("YAML OK")
+          PYEOF

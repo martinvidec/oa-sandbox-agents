@@ -1,0 +1,27 @@
+name: Experiment
+description: Agenten-Experiment / Sandbox-Aufgabe (niedrige Hürde, explorativ)
+labels: ["agent:ready"]
+body:
+  - type: textarea
+    id: frage
+    attributes:
+      label: Frage / Hypothese
+      description: Was wollen wir herausfinden oder ausprobieren?
+    validations:
+      required: true
+  - type: textarea
+    id: vorgehen
+    attributes:
+      label: Vorgehen
+  - type: textarea
+    id: ergebnis-ort
+    attributes:
+      label: Ergebnis-Ablage
+      description: Wo landen Ergebnisse? (z.B. docs/experiments/<name>.md oder agentic-workflow/)
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: Keine eigene Infrastruktur
+        - label: Budget-Caps gesetzt (--max-turns)

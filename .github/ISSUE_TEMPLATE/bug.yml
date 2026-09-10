@@ -1,0 +1,28 @@
+name: Bug
+description: Etwas funktioniert nicht
+labels: ["agent:ready"]
+body:
+  - type: textarea
+    id: beschreibung
+    attributes:
+      label: Was passiert (falsch)?
+    validations:
+      required: true
+  - type: textarea
+    id: erwartung
+    attributes:
+      label: Was sollte passieren?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduktion / Beleg
+      description: Log, Fehlermeldung, Issue-Ref.
+  - type: textarea
+    id: akzeptanz
+    attributes:
+      label: Akzeptanzkriterien
+      value: "- [ ] Bug behoben, Test/Check dokumentiert "
+    validations:
+      required: true
