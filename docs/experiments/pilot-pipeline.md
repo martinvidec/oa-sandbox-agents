@@ -63,7 +63,9 @@ Worktree kann sich nicht selbst entfernen), und offen blieb: Wer räumt wann auf
 was passiert mit dem lokalen Branch nach dem Merge?
 
 **Fix hier:** Cleanup-Block in `AGENTS.md` mit Repo-Root als Ausführungsort, `git worktree
-prune` und Branch-Löschung; Zuständigkeit (nach Merge, Lead oder Coder-Folgerun) benannt.
+prune` und Branch-Löschung; Zuständigkeit (nach Merge) benannt. Owner ist der **Lead** —
+der Coder-Run ist mit dem PR beendet und läuft zum Merge-Zeitpunkt nicht mehr
+(Stand nach PR #4, siehe Cleanup-Block in [`AGENTS.md`](../../AGENTS.md)).
 
 ### F3 — Label-Übergänge hatten keinen Owner (mittel, Fix hier)
 
