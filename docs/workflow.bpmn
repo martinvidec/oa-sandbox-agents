@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_AgenticWorkflow"
+                  targetNamespace="http://openaustria.org/bpmn/agentic-workflow">
+  <bpmn:collaboration id="Collab_1">
+    <bpmn:participant id="Participant_Martin" name="Martin (Owner)" processRef="Process_Martin" />
+    <bpmn:participant id="Participant_Lead" name="Hermes Lead (Orchestrator)" processRef="Process_Lead" />
+    <bpmn:participant id="Participant_Research" name="Researcher (@research / @deep-research)" processRef="Process_Research" />
+    <bpmn:participant id="Participant_Coder" name="Coder (Claude Code)" processRef="Process_Coder" />
+    <bpmn:participant id="Participant_Reviewer" name="Reviewer (Claude Code, 2. Run)" processRef="Process_Reviewer" />
+    <bpmn:participant id="Participant_CI" name="GitHub CI" processRef="Process_CI" />
+  </bpmn:collaboration>
+
+  <!-- ================= MARTIN ================= -->
+  <bpmn:process id="Process_Martin" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_Martin">
+      <bpmn:lane id="Lane_Martin" name="Martin">
+        <bpmn:flowNodeRef>StartEvent_Auftrag</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_AuftragFormulieren</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_MergePR</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EndEvent_FeatureLive</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="StartEvent_Auftrag" name="Bedarf erkannt" />
+    <bpmn:userTask id="Task_AuftragFormulieren" name="Auftrag formulieren (Telegram)" />
+    <bpmn:userTask id="Task_MergePR" name="PR mergen (nur bei grünem CI + Review)" />
+    <bpmn:endEvent id="EndEvent_FeatureLive" name="Feature im Main" />
+    <bpmn:sequenceFlow id="Flow_M1" sourceRef="StartEvent_Auftrag" targetRef="Task_AuftragFormulieren" />
+    <bpmn:sequenceFlow id="Flow_M2" sourceRef="Task_AuftragFormulieren" targetRef="Task_MergePR" />
+    <bpmn:sequenceFlow id="Flow_M3" sourceRef="Task_MergePR" targetRef="EndEvent_FeatureLive" />
+  </bpmn:process>
+
+  <!-- ================= HERMES LEAD ================= -->
+  <bpmn:process id="Process_Lead" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_Lead">
+      <bpmn:lane id="Lane_Lead" name="Hermes Lead">
+        <bpmn:flowNodeRef>StartEvent_LeadEmpfang</bpmn:flowNodeRef>
+        <bpmn:task>Klärung</bpmn:task>
+        <bpmn:flowNodeRef>Task_SpecErstellen</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_IssueAnlegen</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_IssueKlar</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Delegieren</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_DraftReady</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Melden</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Cleanup</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EndEvent_LeadFertig</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="StartEvent_LeadEmpfang" name="Auftrag empfangen" />
+    <bpmn:userTask id="Task_Klaeren" name="Rückfragen klären (bei Unklarheit)" />
+    <bpmn:callActivity id="Task_SpecErstellen" name="Spec erstellen (Researcher)" calledElement="Process_Research" />
+    <bpmn:exclusiveGateway id="Gateway_IssueKlar" name="Spec nötig?" />
+    <bpmn:serviceTask id="Task_IssueAnlegen" name="GitHub Issue anlegen (Template, agent:ready)" />
+    <bpmn:serviceTask id="Task_Delegieren" name="Claude Code im Worktree delegieren (--max-turns, Label agent:in-progress)" />
+    <bpmn:serviceTask id="Task_DraftReady" name="Draft→Ready (nach Reviewer-Run, CI grün)" />
+    <bpmn:serviceTask id="Task_Melden" name="Martin melden: PR #, CI-Status, Review-Befunde" />
+    <bpmn:serviceTask id="Task_Cleanup" name="Cleanup: Worktree entfernen, Branch -D" />
+    <bpmn:endEvent id="EndEvent_LeadFertig" name="Zyklus abgeschlossen" />
+
+    <bpmn:sequenceFlow id="Flow_L1" sourceRef="StartEvent_LeadEmpfang" targetRef="Task_Klaeren" />
+    <bpmn:sequenceFlow id="Flow_L2" sourceRef="Task_Klaeren" targetRef="Gateway_IssueKlar" />
+    <bpmn:sequenceFlow id="Flow_L3" sourceRef="Gateway_IssueKlar" targetRef="Task_SpecErstellen" name="ja (größeres Feature)" />
+    <bpmn:sequenceFlow id="Flow_L4" sourceRef="Gateway_IssueKlar" targetRef="Task_IssueAnlegen" name="nein" />
+    <bpmn:sequenceFlow id="Flow_L5" sourceRef="Task_SpecErstellen" targetRef="Task_IssueAnlegen" />
+    <bpmn:sequenceFlow id="Flow_L6" sourceRef="Task_IssueAnlegen" targetRef="Task_Delegieren" />
+    <bpmn:sequenceFlow id="Flow_L7" sourceRef="Task_Delegieren" targetRef="Task_DraftReady" name="Coder-Run beendet (PR offen, CI grün)" />
+    <bpmn:sequenceFlow id="Flow_L8" sourceRef="Task_DraftReady" targetRef="Task_Melden" />
+    <bpmn:sequenceFlow id="Flow_L9" sourceRef="Task_Melden" targetRef="Task_Cleanup" name="nach Merge (Owner: Martin)" />
+    <bpmn:sequenceFlow id="Flow_L10" sourceRef="Task_Cleanup" targetRef="EndEvent_LeadFertig" />
+  </bpmn:process>
+
+  <!-- ================= RESEARCHER ================= -->
+  <bpmn:process id="Process_Research" isExecutable="false">
+    <bpmn:startEvent id="StartEvent_Research" name="Spec-Auftrag" />
+    <bpmn:serviceTask id="Task_Research" name="Recherche / Analyse / Spec-Vorarbeit" />
+    <bpmn:serviceTask id="Task_SpecAblage" name="Spec-Datei nach docs/specs/ (D5)" />
+    <bpmn:endEvent id="EndEvent_Research" name="Spec bereit" />
+    <bpmn:sequenceFlow id="Flow_R1" sourceRef="StartEvent_Research" targetRef="Task_Research" />
+    <bpmn:sequenceFlow id="Flow_R2" sourceRef="Task_Research" targetRef="Task_SpecAblage" />
+    <bpmn:sequenceFlow id="Flow_R3" sourceRef="Task_SpecAblage" targetRef="EndEvent_Research" />
+  </bpmn:process>
+
+  <!-- ================= CODER ================= -->
+  <bpmn:process id="Process_Coder" isExecutable="false">
+    <bpmn:startEvent id="StartEvent_Coder" name="Issue zugewiesen (AGENTS.md-Pflichtlektüre)" />
+    <bpmn:serviceTask id="Task_Worktree" name="git worktree add (1 Issue = 1 Worktree)" />
+    <bpmn:serviceTask id="Task_Implement" name="Implementieren (Budget: --max-turns)" />
+    <bpmn:serviceTask id="Task_PR" name="git push -u origin HEAD + gh pr create --draft (Closes #N)" />
+    <bpmn:exclusiveGateway id="Gateway_CIGruen" name="CI grün?" />
+    <bpmn:serviceTask id="Task_FixNach" name="Fix nach CI-Log (kein Re-Run-Hoffnungsspiel)" />
+    <bpmn:serviceTask id="Task_LabelReview" name="Label agent:review setzen (Coder)" />
+    <bpmn:endEvent id="EndEvent_Coder" name="PR bereit für Review" />
+    <bpmn:sequenceFlow id="Flow_C1" sourceRef="StartEvent_Coder" targetRef="Task_Worktree" />
+    <bpmn:sequenceFlow id="Flow_C2" sourceRef="Task_Worktree" targetRef="Task_Implement" />
+    <bpmn:sequenceFlow id="Flow_C3" sourceRef="Task_Implement" targetRef="Task_PR" />
+    <bpmn:sequenceFlow id="Flow_C4" sourceRef="Task_PR" targetRef="Gateway_CIGruen" />
+    <bpmn:sequenceFlow id="Flow_C4" sourceRef="Gateway_CIGruen" targetRef="Task_FixNach" name="nein" />
+    <bpmn:sequenceFlow id="Flow_C5" sourceRef="Task_FixNach" targetRef="Task_PR" />
+    <bpmn:sequenceFlow id="Flow_C6" sourceRef="Gateway_CIGruen" targetRef="Task_LabelReview" name="ja" />
+    <bpmn:sequenceFlow id="Flow_C7" sourceRef="Task_LabelReview" targetRef="EndEvent_Coder" />
+  </bpmn:process>
+
+  <!-- ================= REVIEWER ================= -->
+  <bpmn:process id="Process_Reviewer" isExecutable="false">
+    <bpmn:startEvent id="StartEvent_Reviewer" name="PR liegt in agent:review" />
+    <bpmn:serviceTask id="Task_ReviewRun" name="Claude Code 2. Run (sauberer Kontext, kein Write/Edit)" />
+    <bpmn:exclusiveGateway id="Gateway_ReviewOk" name="Blocker/Major?" />
+    <bpmn:serviceTask id="Task_BefundePosten" name="Befunde als PR-Kommentar (blocker/major/minor)" />
+    <bpmn:endEvent id="EndEvent_Reviewer" name="Kein Blocker/Major → PR bereit" />
+    <bpmn:sequenceFlow id="Flow_R1" sourceRef="StartEvent_Reviewer" targetRef="Task_ReviewRun" />
+    <bpmn:sequenceFlow id="Flow_R2" sourceRef="Task_ReviewRun" targetRef="Gateway_ReviewOk" />
+    <bpmn:sequenceFlow id="Flow_R3" sourceRef="Gateway_ReviewOk" targetRef="Task_BefundePosten" name="Befunde vorhanden" />
+    <bpmn:sequenceFlow id="Flow_R4" sourceRef="Gateway_ReviewOk" targetRef="EndEvent_Reviewer" name="keine" />
+    <bpmn:endEvent id="EndEvent_FixLoop" name="Fix-Loop: zurück an Coder (via Lead-Delegation)" />
+    <bpmn:sequenceFlow id="Flow_R5" sourceRef="Task_BefundePosten" targetRef="EndEvent_FixLoop" name="Befunde → Fix-Run" />
+  </bpmn:process>
+
+  <!-- ================= GITHUB CI ================= -->
+  <bpmn:process id="Process_CI" isExecutable="false">
+    <bpmn:startEvent id="StartEvent_CI" name="PR-Push" />
+    <bpmn:serviceTask id="Task_CI" name="GitHub Actions: YAML-Validierung, Konventions-Checks" />
+    <bpmn:endEvent id="EndEvent_CI" name="Status melden (pass/fail)" />
+    <bpmn:sequenceFlow id="Flow_CI1" sourceRef="StartEvent_CI" targetRef="Task_CI" />
+    <bpmn:sequenceFlow id="Flow_CI2" sourceRef="Task_CI" targetRef="EndEvent_CI" />
+  </bpmn:process>
+
+  <!-- ================= MESSAGE FLOWS (cross-pool) ================= -->
+  <bpmn:messageFlow id="MsgFlow_1" sourceRef="Task_AuftragFormulieren" targetRef="StartEvent_LeadEmpfang" />
+  <bpmn:messageFlow id="MsgFlow_2" sourceRef="Task_SpecAblage" targetRef="Task_IssueAnlegen" />
+  <bpmn:messageFlow id="MsgFlow_3" sourceRef="Task_Delegieren" targetRef="StartEvent_Coder" />
+  <bpmn:messageFlow id="MsgFlow_4" sourceRef="EndEvent_Coder" targetRef="StartEvent_Reviewer" />
+  <bpmn:messageFlow id="MsgFlow_5" sourceRef="Task_FixNach" targetRef="StartEvent_Reviewer" name="nach Fix erneut" />
+  <bpmn:messageFlow id="MsgFlow_6" sourceRef="EndEvent_Reviewer" targetRef="Task_DraftReady" />
+  <bpmn:messageFlow id="MsgFlow_7" sourceRef="Task_Melden" targetRef="Task_MergePR" />
+  <bpmn:messageFlow id="MsgFlow_8" sourceRef="Task_MergePR" targetRef="Task_Cleanup" name="merge → cleanup" />
+</bpmn:definitions>
