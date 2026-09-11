@@ -12,9 +12,9 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
   2. GitHub Issue anlegen (Template) — mit Ziel, Akzeptanzkriterien, Scope, Agent-Hinweisen
   │    Label: agent:ready
   3. Lead delegiert → Claude Code im eigenen Worktree
-  │    worktrees/<issue-nr>-<slug>, Branch feat/<issue-nr>-<slug>
-  │    Basis: origin/main; baut das Issue auf einem offenen PR auf, dessen Branch —
-  │    Lead nennt ihn im Delegations-Prompt, ohne Angabe gilt origin/main (AGENTS.md D8)
+  │    worktrees/<issue-nr>-<slug>, Branch feat/<issue-nr>-<slug> (gleicher Slug)
+  │    Basis: origin/main, bei offenem Vorgänger-PR dessen Branch
+  │    (Lead nennt ihn im Delegations-Prompt; AGENTS.md D8)
   │    Label: agent:in-progress
   4. Coder: implementiert, committet, `git push -u origin HEAD`, Draft-PR („Closes #N")
   │    Abbruch an --max-turns: Lead prüft den Worktree gegen die Akzeptanzkriterien →
@@ -78,7 +78,7 @@ Der Einrichtungsauftrag läuft als normales Issue im Ziel-Repo (Template „Expe
 
 ## Regeln (Kurzform, verbindlich — Details in AGENTS.md)
 
-- Merge nur durch Martin, nur bei grünem CI.
+- Merge nur durch Martin, nur bei grünem CI — bei abhängigen PRs entscheidet er auch die Reihenfolge (AGENTS.md D8).
 - Ein Issue = ein Worktree = ein Branch = ein PR. Writes single-threaded.
 - Budget-Caps bei jeder Agenten-Delegation.
 - Ergebnisse/Doku gehören ins Repo, nie nur lokal.
