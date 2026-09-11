@@ -14,7 +14,7 @@
 
 ## Arbeitsaufträge (Pipeline)
 
-Auftrag (Martin, Telegram oder Issue) → ggf. Spec (`docs/specs/`) → **GitHub Issue** (Template, Akzeptanzkriterien, `agent:ready`) → Lead delegiert (`agent:in-progress`) → Coder im eigenen Worktree → Draft-PR (`Closes #N`) → CI grün → `agent:review` (durch den Coder) → Reviewer-Run → Lead hebt Draft-Status auf → **Merge nur durch Martin** bei grünem CI.
+Auftrag (Martin, Telegram oder Issue) → ggf. Spec (`docs/specs/`) → **GitHub Issue** (Template, Akzeptanzkriterien, `agent:ready`) → Lead delegiert (`agent:in-progress`) → Coder im eigenen Worktree → Draft-PR (`Closes #N`) → CI grün → `agent:review` (durch den Coder; bei D7: Lead) → Reviewer-Run → Lead hebt Draft-Status auf → **Merge nur durch Martin** bei grünem CI.
 
 Labels — jeder Übergang hat genau einen Owner, sonst bleiben abgebrochene Runs falsch etikettiert liegen:
 
@@ -85,9 +85,11 @@ git branch -D feat/<issue-nr>-<slug>
 - **D5 — Doku bleibt im Repo:** Ergebnisse, Specs, ADRs → `docs/`; niemals nur lokal.
 - **D6 — Keine eigene Infrastruktur:** Nur GitHub + lokale Agenten.
 - **D7 — Abgebrochener Coder-Run:** Endet ein Coder-Run an `--max-turns`, prüft der Lead den Worktree (`git status`, `git diff`, `git log origin/main..HEAD`) gegen die Akzeptanzkriterien des Issues.
-  - **Vollständig** → der Lead vollendet selbst: Commit, `git push -u origin HEAD`, `gh pr create --draft` (`Closes #N`), nach grünem CI `agent:review`. Die dafür nötigen Einträge nimmt er aus dem Coder-Set (D2).
-  - **Unvollständig** → Fix-Run in **demselben** Worktree/Branch delegieren, wieder mit `--max-turns`.
+  - **Vollständig** (belegbar: `git diff` zeigt die Umsetzung jedes Akzeptanzkriteriums) → der Lead committet den Worktree-Stand **unverändert** und vollendet: `git push -u origin HEAD`, `gh pr create --draft` (`Closes #N`), nach grünem CI `agent:review`. Die dafür nötigen Einträge nimmt er aus dem Coder-Set (D2).
+  - **Unvollständig** → Fix-Run in **demselben** Worktree/Branch delegieren, wieder mit `--max-turns`. Jede inhaltliche Nachbesserung ist ein Fix-Run — der Lead schreibt keinen Code (Rollen-Tabelle).
+  - **Eskalation:** Bricht auch der Fix-Run ab → `needs-human`, Rückfrage an Martin.
   - Der Budget-Guard gilt pro Run, nicht pro Zyklus: Vollenden oder Fix-Run verletzen D2 nicht — jeder weitere Run bekommt aber wieder ein eigenes `--max-turns`.
+  - Randnotiz: D7 ist für den Abbruch an `--max-turns` formuliert. Bricht ein Run anders ab (Crash, Hänger an einer Freigabe), prüft der Lead den Worktree ebenso und verfährt wie oben.
 
 ## Repo-Struktur
 
