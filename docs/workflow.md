@@ -15,8 +15,11 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
   │    worktrees/<issue-nr>-<slug>, Branch feat/<issue-nr>-<slug>
   │    Label: agent:in-progress
   4. Coder: implementiert, committet, `git push -u origin HEAD`, Draft-PR („Closes #N")
+  │    Abbruch an --max-turns: Lead prüft den Worktree gegen die Akzeptanzkriterien →
+  │    vollständig: Lead committet unverändert, Push/PR; sonst Fix-Run;
+  │    bricht auch der ab: needs-human (AGENTS.md D7)
   5. CI (GitHub Actions) läuft — muss grün sein
-  │    Label: agent:review — setzt der Coder, sobald Draft-PR offen UND CI grün belegt ist
+  │    Label: agent:review — setzt der Coder (bei D7: Lead), sobald Draft-PR offen UND CI grün belegt ist
   6. Reviewer-Run (2. Claude-Code-Instanz, sauberer Kontext) → Review-Schleife unten
   7. Lead: hebt Draft-Status auf; meldet an Martin (Telegram-Thread):
   │    „PR #N fertig, CI grün, Review-Befunde: …"
@@ -33,7 +36,7 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
 | Implementierung | Coder | `claude -p "<issue-brief>" --max-turns 30` im Worktree |
 | Push | Coder | `git push -u origin HEAD` (nie `HEAD:main` — D1) |
 | PR öffnen | Coder | `gh pr create --draft` (Body: Closes #N + Akzeptanzkriterien) |
-| Label `agent:review` | Coder | `gh issue edit <n> --add-label agent:review --remove-label agent:in-progress` |
+| Label `agent:review` | Coder (bei D7: Lead) | `gh issue edit <n> --add-label agent:review --remove-label agent:in-progress` |
 | Review | Reviewer | separater Claude-Code-Run auf dem PR-Diff, `--max-turns 15`, Tool-Set siehe AGENTS.md D2 |
 | Draft → Ready | Lead | `gh pr ready <n>` nach grünem CI + abgeschlossenem Review; Tool-Set: `Bash(gh pr ready *)`, `Bash(gh pr view *)`, `Bash(gh run list *)`, `Bash(gh run view *)` (vollständiges Lead-Set: AGENTS.md D2) |
 | Merge | **Martin** | GitHub UI oder `gh pr merge` |
