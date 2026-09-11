@@ -64,6 +64,7 @@ git branch -D feat/<issue-nr>-<slug>
   schlägt in der Fehlermeldung `git push origin HEAD:main` vor. Dieser Vorschlag pusht am
   PR vorbei auf `main` und ist ein **D1-Verstoß** — nie befolgen. Direkte Pushes auf `main`
   sind für Agenten ausnahmslos verboten.
+- Basis ist `origin/main` — außer das Issue baut auf einem offenen PR auf (D8).
 - `worktrees/` ist gitignored.
 - Branch-Naming: `feat/<issue-nr>-<slug>`, `fix/<issue-nr>-<slug>`, `docs/<issue-nr>-<slug>`.
   Slug: 1–3 Wörter aus dem Issue-Titel, kleingeschrieben, mit Bindestrichen.
@@ -90,6 +91,11 @@ git branch -D feat/<issue-nr>-<slug>
   - **Eskalation:** Bricht auch der Fix-Run ab → `needs-human`, Rückfrage an Martin.
   - Der Budget-Guard gilt pro Run, nicht pro Zyklus: Vollenden oder Fix-Run verletzen D2 nicht — jeder weitere Run bekommt aber wieder ein eigenes `--max-turns`.
   - Randnotiz: D7 ist für den Abbruch an `--max-turns` formuliert. Bricht ein Run anders ab (Crash, Hänger an einer Freigabe), prüft der Lead den Worktree ebenso und verfährt wie oben.
+- **D8 — Abhängige Issues:** Baut ein Issue inhaltlich auf einem noch nicht gemergten PR auf, wird der Worktree von dessen Branch angelegt statt von `origin/main` — sonst fehlt dem Coder der Vorgänger-Stand und es entstehen doppelte PRs (so geschehen bei #10/#12).
+  - **Worktree:** `git worktree add worktrees/<issue-nr>-<slug> -b feat/<issue-nr>-<slug> origin/<pr-branch>`
+  - **Lead:** trägt die Basis in die Agent-Hinweise des Issues ein und nennt die Basis-Branch-Referenz im Delegations-Prompt. **Ohne Basis-Angabe gilt `origin/main`.**
+  - Push weiterhin nur `git push -u origin HEAD`. Der PR-Body nennt die Abhängigkeit („baut auf #X auf — nach #X mergen"); die Reihenfolge entscheidet Martin (D1).
+  - D7-Prüfung gegen die Basis: `git log origin/<pr-branch>..HEAD` statt `origin/main..HEAD`.
 
 ## Repo-Struktur
 

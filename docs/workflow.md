@@ -13,6 +13,8 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
   │    Label: agent:ready
   3. Lead delegiert → Claude Code im eigenen Worktree
   │    worktrees/<issue-nr>-<slug>, Branch feat/<issue-nr>-<slug>
+  │    Basis: origin/main; baut das Issue auf einem offenen PR auf, dessen Branch —
+  │    Lead nennt ihn im Delegations-Prompt, ohne Angabe gilt origin/main (AGENTS.md D8)
   │    Label: agent:in-progress
   4. Coder: implementiert, committet, `git push -u origin HEAD`, Draft-PR („Closes #N")
   │    Abbruch an --max-turns: Lead prüft den Worktree gegen die Akzeptanzkriterien →
@@ -32,7 +34,7 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
 | Schritt | Wer | Tool/Befehl |
 |---|---|---|
 | Issue anlegen | Lead | `gh issue create --template feature.yml --label agent:ready` |
-| Worktree anlegen | Coder | `git worktree add worktrees/<n>-<slug> -b feat/<n>-<slug> origin/main` |
+| Worktree anlegen | Coder | `git worktree add worktrees/<n>-<slug> -b feat/<n>-<slug> origin/main` (abhängiges Issue: `origin/<pr-branch>`, AGENTS.md D8) |
 | Implementierung | Coder | `claude -p "<issue-brief>" --max-turns 30` im Worktree |
 | Push | Coder | `git push -u origin HEAD` (nie `HEAD:main` — D1) |
 | PR öffnen | Coder | `gh pr create --draft` (Body: Closes #N + Akzeptanzkriterien) |
