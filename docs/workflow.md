@@ -12,9 +12,9 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
   2. GitHub Issue anlegen (Template) — mit Ziel, Akzeptanzkriterien, Scope, Agent-Hinweisen
   │    Label: agent:ready
   3. Lead delegiert → Claude Code im eigenen Worktree
-  │    worktrees/<issue-nr>-<slug>, Branch feat/<issue-nr>-<slug>
-  │    Basis: origin/main; baut das Issue auf einem offenen PR auf, dessen Branch —
-  │    Lead nennt ihn im Delegations-Prompt, ohne Angabe gilt origin/main (AGENTS.md D8)
+  │    worktrees/<issue-nr>-<slug>, Branch feat/<issue-nr>-<slug> (gleicher Slug)
+  │    Basis: origin/main, bei offenem Vorgänger-PR dessen Branch
+  │    (Lead nennt ihn im Delegations-Prompt; AGENTS.md D8)
   │    Label: agent:in-progress
   4. Coder: implementiert, committet, `git push -u origin HEAD`, Draft-PR („Closes #N")
   │    Abbruch an --max-turns: Lead prüft den Worktree gegen die Akzeptanzkriterien →
@@ -47,9 +47,9 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
 ## Review-Schleife
 
 1. Der Lead startet den Reviewer-Run — **eigener Prozess, sauberer Kontext**, kein Wissen aus dem Coding-Run.
-2. Reviewt wird der vollständige PR-Diff (`gh pr diff <n>`) gegen AGENTS.md (D3, D4) und die Akzeptanzkriterien des Issues. Dafür braucht der Reviewer `Bash(gh issue view *)` in seinem Tool-Set — ohne das kommt er nicht an die Akzeptanzkriterien und kann D4 nicht prüfen (im Pilot-Run empirisch gescheitert).
+2. Reviewt wird der vollständige PR-Diff (`gh pr diff <n>`) gegen AGENTS.md (D3, D4) und die Akzeptanzkriterien des Issues. Dafür braucht der Reviewer `Bash(gh issue view *)` in seinem Tool-Set — ohne das kommt er nicht an die Akzeptanzkriterien und kann D4 nicht prüfen (im Pilot-Run empirisch gescheitert). Bei D8-Basis enthält `gh pr diff` auch den Vorgänger-PR (der PR läuft gegen `main`) — dann stattdessen `git diff origin/<pr-branch>...HEAD` (HEAD = PR-Branch) reviewen, damit nur die Arbeit dieses Issues geprüft wird (AGENTS.md D8).
 3. Befunde gehen als PR-Kommentare raus; der Reviewer editiert **keinen** Code. Ohne Befunde: ein Kommentar „Review ok, keine Befunde" — Schweigen zählt nicht als Freigabe.
-4. Nachbesserung macht der Coder in **demselben** Worktree/Branch (sonst bricht „ein Issue = ein Worktree = ein PR").
+4. Nachbesserung macht der Coder in **demselben** Worktree/Branch (sonst bricht „ein Issue = ein Worktree = ein PR") — kein neues Issue, auch kein D8-Folge-Issue (Abgrenzung: AGENTS.md D8).
 5. Maximal zwei Schleifen; danach `needs-human` und Eskalation an Martin.
 6. Akzeptanzkriterien, die nicht der Coder erfüllen kann, werden im Issue mit Owner markiert — `(Reviewer)`, `(Martin)`. Der Coder hakt sie nicht ab, sondern führt sie im PR als offen mit Owner.
 
@@ -78,7 +78,7 @@ Der Einrichtungsauftrag läuft als normales Issue im Ziel-Repo (Template „Expe
 
 ## Regeln (Kurzform, verbindlich — Details in AGENTS.md)
 
-- Merge nur durch Martin, nur bei grünem CI.
+- Merge nur durch Martin, nur bei grünem CI — bei abhängigen PRs entscheidet er auch die Reihenfolge (AGENTS.md D8).
 - Ein Issue = ein Worktree = ein Branch = ein PR. Writes single-threaded.
 - Budget-Caps bei jeder Agenten-Delegation.
 - Ergebnisse/Doku gehören ins Repo, nie nur lokal.
