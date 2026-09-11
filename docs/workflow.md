@@ -18,14 +18,15 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
   │    Label: agent:in-progress
   4. Coder: implementiert, committet, `git push -u origin HEAD`, Draft-PR („Closes #N")
   │    Abbruch an --max-turns: Lead prüft den Worktree gegen die Akzeptanzkriterien
-  │    (vom Repo-Root: git -C worktrees/<n>-<slug> status|diff|log) →
+  │    (Lead-Run im Worktree-Verzeichnis: git status|diff|log, kein git -C) →
   │    vollständig: Lead committet unverändert, Push/PR; sonst Fix-Run;
   │    bricht auch der ab: needs-human (AGENTS.md D7)
-  │    D8-Basis und Vorgänger inzwischen gemergt: vorher git status —
-  │    laufender Merge → needs-human, kein Sync-Run; sonst erst Sync-Run
-  │    (committet Uncommittetes unverändert, holt main), dann Prüfung gegen
-  │    origin/main; bricht der Sync-Run ab (nicht mitten im Merge): ein neuer
-  │    Sync-Run, bricht auch der ab: needs-human (AGENTS.md D8)
+  │    D8-Basis und Vorgänger inzwischen gemergt: vorher git status im
+  │    Worktree-Verzeichnis — laufender Merge → needs-human, kein Sync-Run;
+  │    sonst erst Sync-Run (committet Uncommittetes unverändert, holt main),
+  │    dann Prüfung gegen origin/main; bricht der Sync-Run ab (nicht mitten
+  │    im Merge): ein neuer Sync-Run, bricht auch der ab: needs-human —
+  │    höchstens zwei Sync-Versuche je gemergtem Vorgänger (AGENTS.md D8)
   5. CI (GitHub Actions) läuft — muss grün sein
   │    Label: agent:review — setzt der Coder (bei D7: Lead), sobald Draft-PR offen UND CI grün belegt ist
   6. Reviewer-Run (2. Claude-Code-Instanz, sauberer Kontext) → Review-Schleife unten
