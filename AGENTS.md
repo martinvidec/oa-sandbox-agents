@@ -22,7 +22,7 @@ Labels — jeder Übergang hat genau einen Owner, sonst bleiben abgebrochene Run
 |---|---|---|
 | `agent:ready` | Lead (bzw. Issue-Template automatisch) | Issue ist briefing-fertig |
 | `agent:in-progress` | Lead beim Delegieren | Coder-Run startet |
-| `agent:review` | Coder, sobald Draft-PR offen und CI grün | PR wartet auf Reviewer-Run |
+| `agent:review` | Coder, sobald Draft-PR offen und CI grün (Lead, wenn er nach D7 vollendet) | PR wartet auf Reviewer-Run |
 | `needs-human` / `blocked` | jeder Agent, der nicht weiterkommt | Rückfrage an Martin nötig / externe Blockade |
 
 Nach dem Merge räumt `Closes #N` das Issue selbst ab; Labels müssen dann nicht mehr nachgezogen werden.
@@ -84,6 +84,10 @@ git branch -D feat/<issue-nr>-<slug>
 - **D4 — Akzeptanzkriterien:** Ein Issue gilt erst erledigt, wenn jede Akzeptanzkriterium-Checkliste abgehakt/automatisiert verifiziert ist. Kriterien, die außerhalb der eigenen Rolle liegen (Reviewer-Run, Merge), hakt man **nicht** selbst ab, sondern benennt sie im PR mit Owner als offen.
 - **D5 — Doku bleibt im Repo:** Ergebnisse, Specs, ADRs → `docs/`; niemals nur lokal.
 - **D6 — Keine eigene Infrastruktur:** Nur GitHub + lokale Agenten.
+- **D7 — Abgebrochener Coder-Run:** Endet ein Coder-Run an `--max-turns`, prüft der Lead den Worktree (`git status`, `git diff`, `git log origin/main..HEAD`) gegen die Akzeptanzkriterien des Issues.
+  - **Vollständig** → der Lead vollendet selbst: Commit, `git push -u origin HEAD`, `gh pr create --draft` (`Closes #N`), nach grünem CI `agent:review`. Die dafür nötigen Einträge nimmt er aus dem Coder-Set (D2).
+  - **Unvollständig** → Fix-Run in **demselben** Worktree/Branch delegieren, wieder mit `--max-turns`.
+  - Der Budget-Guard gilt pro Run, nicht pro Zyklus: Vollenden oder Fix-Run verletzen D2 nicht — jeder weitere Run bekommt aber wieder ein eigenes `--max-turns`.
 
 ## Repo-Struktur
 
