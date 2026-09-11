@@ -15,6 +15,8 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
   │    worktrees/<issue-nr>-<slug>, Branch feat/<issue-nr>-<slug>
   │    Label: agent:in-progress
   4. Coder: implementiert, committet, `git push -u origin HEAD`, Draft-PR („Closes #N")
+  │    Abbruch an --max-turns: Lead prüft den Worktree gegen die Akzeptanzkriterien →
+  │    vollständig: Lead vollendet Commit/Push/PR; sonst Fix-Run (AGENTS.md D7)
   5. CI (GitHub Actions) läuft — muss grün sein
   │    Label: agent:review — setzt der Coder, sobald Draft-PR offen UND CI grün belegt ist
   6. Reviewer-Run (2. Claude-Code-Instanz, sauberer Kontext) → Review-Schleife unten
