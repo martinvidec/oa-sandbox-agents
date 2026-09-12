@@ -26,7 +26,10 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
   │    sonst erst Sync-Run (committet Uncommittetes unverändert, holt main),
   │    dann Prüfung gegen origin/main; bricht der Sync-Run ab (nicht mitten
   │    im Merge): ein neuer Sync-Run, bricht auch der ab: needs-human —
-  │    höchstens zwei Sync-Versuche je gemergtem Vorgänger (AGENTS.md D8)
+  │    höchstens zwei Sync-Versuche je gemergtem Vorgänger; Ausnahme: war der
+  │    abgebrochene Versuch schon der Sync des D7-Fix-Runs, gibt es keinen
+  │    Wiederholungsversuch → direkt needs-human (AGENTS.md D8, „Zählung —
+  │    höchstens zwei Sync-Versuche pro Sync-Anlass")
   5. CI (GitHub Actions) läuft — muss grün sein
   │    Beleg als PR-Kommentar, nicht im PR-Body (der wird nicht nachgepflegt; AGENTS.md D4)
   │    Label: agent:review — setzt der Coder (bei D7: Lead), sobald Draft-PR offen UND CI grün belegt ist
@@ -47,7 +50,7 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
 | Push | Coder | `git push -u origin HEAD` (nie `HEAD:main` — D1) |
 | PR öffnen | Coder | `gh pr create --draft` (Body: Closes #N + Akzeptanzkriterien) |
 | CI-Beleg am PR | Coder (bei D7: Lead) | `gh pr comment <n> --body "CI grün: Run <id>, conclusion success"` — der PR-Body wird **nicht** nachgepflegt, `gh pr edit` steht in keinem Tool-Set (AGENTS.md D2, D4) |
-| Label `agent:review` | Coder (bei D7: Lead) | `gh issue edit <n> --add-label agent:review --remove-label agent:in-progress` |
+| Label `agent:review` | Coder (bei D7: Lead) | `gh issue edit --add-label agent:review --remove-label agent:in-progress <n>` — Label-Flag zuerst, Nummer zuletzt; `gh issue edit` ist nur in dieser Form freigegeben (AGENTS.md D2) |
 | Review | Reviewer | separater Claude-Code-Run auf dem PR-Diff, `--max-turns 15`, Tool-Set siehe AGENTS.md D2 |
 | Draft → Ready | Lead | `gh pr ready <n>` nach grünem CI + abgeschlossenem Review; Tool-Set: `Bash(gh pr ready *)`, `Bash(gh pr view *)`, `Bash(gh run list *)`, `Bash(gh run view *)` (vollständiges Lead-Set: AGENTS.md D2) |
 | Merge | **Martin** | GitHub UI oder `gh pr merge` |
@@ -78,7 +81,10 @@ erwartet. Im Pilot-Durchlauf waren zwei Status als erledigt protokolliert, bevor
 CI läuft erst danach an. Nachgepflegt wird er nicht: `gh pr edit` steht in keinem Tool-Set, weil
 `--body` den Body vollständig ersetzt und dabei `Closes #N` oder die Owner-Vermerke kippen kann
 (AGENTS.md D2). Der Beleg kommt stattdessen als PR-Kommentar (`gh pr comment`, Zuständigkeiten-
-Tabelle oben) — append-only, datiert, überschreibt nichts. Wer den PR liest, findet den Status
+Tabelle oben) — datiert und ohne Zugriff auf den Body. Pro Beleg ein **neuer** Kommentar, kein
+`--edit-last`: Das Pattern `Bash(gh pr comment *)` deckt es ab, die Konvention sieht es nicht vor
+(AGENTS.md D4). Dasselbe gilt für den **Issue**-Body — auch er wird nicht nachgepflegt, Agenten
+ändern ihn nicht (AGENTS.md D2, „Kein blankes `Bash(gh issue edit *)`"). Wer den PR liest, findet den Status
 damit an zwei Stellen: den Checks-Reiter von GitHub und den Beleg-Kommentar.
 
 ## Setup-Mechanismus für beliebige Repos
