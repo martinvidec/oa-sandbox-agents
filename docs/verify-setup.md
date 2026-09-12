@@ -7,6 +7,11 @@ Es läuft **lokal, nicht in CI**.
 
 ## One-time Setup
 
+> **Manueller Schritt eines Menschen (Martin), einmal pro Rechner — kein Agenten-Schritt.**
+> `npm install` und `npx playwright install` stehen in keinem Tool-Set aus AGENTS.md D2 und laden
+> Pakete bzw. einen Browser aus dem Netz. Kein Coder-, Reviewer- oder Lead-Run führt das Setup aus;
+> fehlt es, meldet der Run das (`needs-human`) statt es selbst nachzuholen.
+
 Playwright wird **außerhalb des Repos** installiert, damit weder `node_modules/` noch eine
 `package.json` im Worktree landen (beides ist nicht gitignored):
 
@@ -33,7 +38,9 @@ NODE_PATH=~/.cache/oa-verify/node_modules node scripts/verify-mermaid.mjs
 
 - Erstes Argument: HTML-Datei, Default `docs/workflow-hochglanz.html`.
 - `--out <verzeichnis>`: Ziel für Screenshots und Report, Default `<tmpdir>/verify-mermaid`
-  (bewusst außerhalb des Repos).
+  (bewusst außerhalb des Repos). Der Default-Ordner wird bei jedem Start geleert, damit keine
+  Screenshots eines früheren Laufs im Ergebnis liegen; ein per `--out` angegebenes Verzeichnis
+  bleibt unangetastet.
 
 ```bash
 NODE_PATH=~/.cache/oa-verify/node_modules node scripts/verify-mermaid.mjs docs/andere-seite.html --out /tmp/verify-42
@@ -48,26 +55,28 @@ Je `.mermaid`-Block:
 | Prüfung | Report-Feld |
 |---|---|
 | SVG gerendert | `svg` |
-| Mermaid-Error-Boxen (Syntaxfehler) | `errorBoxes` |
+| Mermaid-Error-Boxen (Syntaxfehler; eine Box je Fehler) | `errorBoxes` |
 | Node × Node überlappt | `nodeOverlaps` |
 | Kantenlabel × Node überlappt | `labelNodeOverlaps` |
 | Kantenlabel × Kantenlabel überlappt | `labelLabelOverlaps` |
 | Cluster-Titel × Node überlappt | `clusterTitleOverlaps` |
 | Label größer als sein Rahmen (abgeschnitten) | `clippedLabels` |
 
-Kollisionen stammen aus den Bounding-Boxen (`getBoundingClientRect`, 1 px Toleranz); jeder Eintrag
+Geprüft wird erst, wenn jeder `.mermaid`-Block ein SVG mit Inhalt hat (höchstens 30 s, sonst
+Befund „Timeout"). Kollisionen stammen aus den Bounding-Boxen (`getBoundingClientRect`, 1 px Toleranz); jeder Eintrag
 nennt das Überlappungsmaß als Breite × Höhe der Schnittfläche. Dazu kommen Konsolenfehler der Seite.
 
 ## Ausgabe
 
-- `verify-diagram-<n>.png` — je Diagramm (`.diagram-container`, sonst der `.mermaid`-Block)
+- `verify-diagram-<n>.png` — je `.mermaid`-Block; `<n>` entspricht `diagram` im Report
 - `verify-fullpage.png` — ganze Seite
 - `verify-report.json` — derselbe JSON-Report, der auch auf stdout geht; `findings` fasst alle Befunde zusammen
 
-Exit-Code: `0` keine Befunde, `1` Befunde, `2` Setup- oder Aufruffehler (Playwright/Chromium fehlt,
-Datei nicht gefunden).
+Exit-Code: `0` keine Befunde, `1` Befunde, `2` Setup-, Aufruf- oder Laufzeitfehler
+(Playwright/Chromium fehlt, Datei nicht gefunden, Seite lädt nicht, Screenshot scheitert).
+`1` bedeutet also immer: Die Prüfung lief durch und hat Befunde.
 
 ## Einsatz in der Pipeline
 
-Diagramm-PRs belegen die Verifikation mit Screenshots im PR-Kommentar — siehe
-[`workflow.md`](workflow.md), Review-Schleife.
+Diagramm-PRs belegen die Verifikation mit Screenshots im PR-Kommentar — Coder-Pflicht vor
+`agent:review`, siehe [`workflow.md`](workflow.md), Zuständigkeiten pro Schritt.
