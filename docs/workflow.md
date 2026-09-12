@@ -81,11 +81,14 @@ erwartet. Im Pilot-Durchlauf waren zwei Status als erledigt protokolliert, bevor
 CI läuft erst danach an. Nachgepflegt wird er nicht: `gh pr edit` steht in keinem Tool-Set, weil
 `--body` den Body vollständig ersetzt und dabei `Closes #N` oder die Owner-Vermerke kippen kann
 (AGENTS.md D2). Der Beleg kommt stattdessen als PR-Kommentar (`gh pr comment`, Zuständigkeiten-
-Tabelle oben) — datiert und ohne Zugriff auf den Body. Pro Beleg ein **neuer** Kommentar, kein
-`--edit-last`: Das Pattern `Bash(gh pr comment *)` deckt es ab, die Konvention sieht es nicht vor
-(AGENTS.md D4). Dasselbe gilt für den **Issue**-Body — auch er wird nicht nachgepflegt, Agenten
-ändern ihn nicht (AGENTS.md D2, „Kein blankes `Bash(gh issue edit *)`"). Wer den PR liest, findet den Status
-damit an zwei Stellen: den Checks-Reiter von GitHub und den Beleg-Kommentar.
+Tabelle oben) — datiert und ohne Zugriff auf den Body. Pro Beleg ein **neuer** Kommentar, weder
+`--edit-last` noch `--delete-last`: Das Pattern `Bash(gh pr comment *)` deckt beide ab (bei
+`--delete-last` samt `--yes`, das die Löschbestätigung überspringt), die Konvention sieht sie nicht
+vor (AGENTS.md D4). Dasselbe gilt für den **Issue**-Body — auch er wird nicht nachgepflegt, Agenten
+ändern ihn nicht (AGENTS.md D2, „Kein blankes `Bash(gh issue edit *)`"). Einzige Ausnahme: der Lead
+stellt die D8-Basis in den Agent-Hinweisen auf `origin/main` um, mit einer Zusatzfreigabe für genau
+diesen Run (AGENTS.md D2, „Einzige Ausnahme — die D8-Basisänderung"). Wer den PR liest, findet den
+Status damit an zwei Stellen: den Checks-Reiter von GitHub und den Beleg-Kommentar.
 
 ## Setup-Mechanismus für beliebige Repos
 
