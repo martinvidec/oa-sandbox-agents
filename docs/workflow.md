@@ -28,6 +28,7 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
   │    im Merge): ein neuer Sync-Run, bricht auch der ab: needs-human —
   │    höchstens zwei Sync-Versuche je gemergtem Vorgänger (AGENTS.md D8)
   5. CI (GitHub Actions) läuft — muss grün sein
+  │    Beleg als PR-Kommentar, nicht im PR-Body (der wird nicht nachgepflegt; AGENTS.md D4)
   │    Label: agent:review — setzt der Coder (bei D7: Lead), sobald Draft-PR offen UND CI grün belegt ist
   6. Reviewer-Run (2. Claude-Code-Instanz, sauberer Kontext) → Review-Schleife unten
   7. Lead: hebt Draft-Status auf; meldet an Martin (Telegram-Thread):
@@ -45,6 +46,7 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
 | Implementierung | Coder | `claude -p "<issue-brief>" --max-turns 30` im Worktree |
 | Push | Coder | `git push -u origin HEAD` (nie `HEAD:main` — D1) |
 | PR öffnen | Coder | `gh pr create --draft` (Body: Closes #N + Akzeptanzkriterien) |
+| CI-Beleg am PR | Coder (bei D7: Lead) | `gh pr comment <n> --body "CI grün: Run <id>, conclusion success"` — der PR-Body wird **nicht** nachgepflegt, `gh pr edit` steht in keinem Tool-Set (AGENTS.md D2, D4) |
 | Label `agent:review` | Coder (bei D7: Lead) | `gh issue edit <n> --add-label agent:review --remove-label agent:in-progress` |
 | Review | Reviewer | separater Claude-Code-Run auf dem PR-Diff, `--max-turns 15`, Tool-Set siehe AGENTS.md D2 |
 | Draft → Ready | Lead | `gh pr ready <n>` nach grünem CI + abgeschlossenem Review; Tool-Set: `Bash(gh pr ready *)`, `Bash(gh pr view *)`, `Bash(gh run list *)`, `Bash(gh run view *)` (vollständiges Lead-Set: AGENTS.md D2) |
@@ -71,6 +73,13 @@ erwartet. Im Pilot-Durchlauf waren zwei Status als erledigt protokolliert, bevor
 - „Review erledigt" erst, wenn der Review-Kommentar am PR steht (Schweigen zählt nicht).
 - „Merged" erst nach `gh pr view <n> --json state,mergedAt`.
 - Ist der Beleg noch offen, bleibt das Häkchen leer und der Punkt wird mit Owner als offen benannt (D4).
+
+**Im PR-Body bleibt „CI grün" dauerhaft unabgehakt** — der Body ist der Stand bei `gh pr create`,
+CI läuft erst danach an. Nachgepflegt wird er nicht: `gh pr edit` steht in keinem Tool-Set, weil
+`--body` den Body vollständig ersetzt und dabei `Closes #N` oder die Owner-Vermerke kippen kann
+(AGENTS.md D2). Der Beleg kommt stattdessen als PR-Kommentar (`gh pr comment`, Zuständigkeiten-
+Tabelle oben) — append-only, datiert, überschreibt nichts. Wer den PR liest, findet den Status
+damit an zwei Stellen: den Checks-Reiter von GitHub und den Beleg-Kommentar.
 
 ## Setup-Mechanismus für beliebige Repos
 
