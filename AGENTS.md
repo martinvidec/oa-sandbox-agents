@@ -69,6 +69,8 @@ git branch -D feat/<issue-nr>-<slug>
 - `worktrees/` ist gitignored.
 - Branch-Naming: `feat/<issue-nr>-<slug>`, `fix/<issue-nr>-<slug>`, `docs/<issue-nr>-<slug>`.
   Slug: 1–3 Wörter aus dem Issue-Titel, kleingeschrieben, mit Bindestrichen.
+  Umlaute werden transkribiert: `ä`→`ae`, `ö`→`oe`, `ü`→`ue`, `ß`→`ss` (Beispiel:
+  „Nachschärfung" → `nachschaerfung`).
 - **Worktree-Ordner und Branch tragen denselben `<issue-nr>-<slug>`** — nur das Präfix
   (`feat/`, `fix/`, `docs/`) unterscheidet sie: `worktrees/13-d8-dependent-issues` ↔
   `docs/13-d8-dependent-issues`, nicht `worktrees/13-d8-dependent`. Sonst findet der Lead
