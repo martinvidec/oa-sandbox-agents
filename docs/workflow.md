@@ -32,6 +32,7 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
   │    höchstens zwei Sync-Versuche pro Sync-Anlass")
   5. CI (GitHub Actions) läuft — muss grün sein
   │    Beleg als PR-Kommentar, nicht im PR-Body (der wird nicht nachgepflegt; AGENTS.md D4)
+  │    Diagramm-PR: zusätzlich Verify-Beleg als PR-Kommentar (Zuständigkeiten, „Diagramm-Beleg am PR")
   │    Label: agent:review — setzt der Coder (bei D7: Lead), sobald Draft-PR offen UND CI grün belegt ist
   6. Reviewer-Run (2. Claude-Code-Instanz, sauberer Kontext) → Review-Schleife unten
   7. Lead: hebt Draft-Status auf; meldet an Martin (Telegram-Thread):
@@ -50,6 +51,7 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
 | Push | Coder | `git push -u origin HEAD` (nie `HEAD:main` — D1) |
 | PR öffnen | Coder | `gh pr create --draft` (Body: Closes #N + Akzeptanzkriterien) |
 | CI-Beleg am PR | Coder (bei D7: Lead) | `gh pr comment <n> --body "CI grün: Run <id>, conclusion success"` — der PR-Body wird **nicht** nachgepflegt, `gh pr edit` steht in keinem Tool-Set (AGENTS.md D2, D4) |
+| Diagramm-Beleg am PR | Coder (bei D7: Lead) | Nur wenn der PR ein Diagramm ändert (z.B. Mermaid in `docs/workflow-hochglanz.html`): **Pflicht vor `agent:review`.** Lokal `scripts/verify-mermaid.mjs` laufen lassen (Setup: [`verify-setup.md`](verify-setup.md)) und einen **neuen** PR-Kommentar mit den Screenshots und dem Ergebnis (`ok`/`findings` aus dem Report) anlegen, wie jeder Beleg (Häkchen nur mit Beleg, unten). Meldet der Report Befunde, erst nachbessern; visuelle Akzeptanzkriterien gelten ohne diesen Beleg nicht als erfüllt |
 | Label `agent:review` | Coder (bei D7: Lead) | `gh issue edit --add-label agent:review --remove-label agent:in-progress <n>` — Label-Flag zuerst, Nummer zuletzt; `gh issue edit` ist nur in dieser Form freigegeben (AGENTS.md D2) |
 | Review | Reviewer | separater Claude-Code-Run auf dem PR-Diff, `--max-turns 15`, Tool-Set siehe AGENTS.md D2 |
 | Draft → Ready | Lead | `gh pr ready <n>` nach grünem CI + abgeschlossenem Review; Tool-Set: `Bash(gh pr ready *)`, `Bash(gh pr view *)`, `Bash(gh run list *)`, `Bash(gh run view *)` (vollständiges Lead-Set: AGENTS.md D2) |
@@ -61,6 +63,7 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
 1. Der Lead startet den Reviewer-Run — **eigener Prozess, sauberer Kontext**, kein Wissen aus dem Coding-Run.
 2. Reviewt wird der vollständige PR-Diff (`gh pr diff <n>`) gegen AGENTS.md (D3, D4) und die Akzeptanzkriterien des Issues. Dafür braucht der Reviewer `Bash(gh issue view *)` in seinem Tool-Set — ohne das kommt er nicht an die Akzeptanzkriterien und kann D4 nicht prüfen (im Pilot-Run empirisch gescheitert). Bei D8-Basis enthält `gh pr diff` auch den Vorgänger-PR (der PR läuft gegen `main`) — dann stattdessen `git diff origin/<pr-branch>...HEAD` (HEAD = PR-Branch) reviewen, damit nur die Arbeit dieses Issues geprüft wird (AGENTS.md D8). Das gilt nur bis zum Merge des Vorgängers: Vorher `gh pr view <X> --json state,mergedAt` prüfen. Ist #X gemergt und `main` per Sync-Run im PR-Branch, gilt `git diff origin/main...HEAD` (bzw. wieder `gh pr diff`), nicht mehr `origin/<pr-branch>...HEAD` — der Diff enthielte sonst alles, was mit `main` hereinkam. Den Sync-Stand erkennt der Reviewer an den Agent-Hinweisen des Issues (nach dem Sync nennt der Lead dort wieder `origin/main` als Basis) oder daran, dass `git log HEAD..origin/main` leer ist — das setzt einen nach dem Merge von #X gefetchten `origin/main` voraus; im Zweifel gelten die Agent-Hinweise. Ist #X gemergt, `main` aber noch nicht im Branch, startet kein Review: Der Reviewer schreibt nur einen PR-Kommentar „kein Review, Sync fehlt" und endet; der Lead delegiert daraufhin den Sync-Run und danach einen neuen Reviewer-Run (AGENTS.md D8, „**Auslöser**" und „**Danach gilt `<basis>` = `origin/main`**").
 3. Befunde gehen als PR-Kommentare raus; der Reviewer editiert **keinen** Code. Ohne Befunde: ein Kommentar „Review ok, keine Befunde" — Schweigen zählt nicht als Freigabe.
+   - **Diagramm-PRs:** Der Reviewer prüft, ob der Verify-Beleg des Coders am PR steht (Pflicht und Ablauf: Zuständigkeiten pro Schritt, „Diagramm-Beleg am PR"). Fehlt der Kommentar oder meldet der Report Befunde (Error-Boxen, Überlappungen, abgeschnittene Labels), ist das ein Review-Befund.
 4. Nachbesserung macht der Coder in **demselben** Worktree/Branch (sonst bricht „ein Issue = ein Worktree = ein PR") — kein neues Issue, auch kein D8-Folge-Issue (Abgrenzung: AGENTS.md D8).
 5. Maximal zwei Schleifen; danach `needs-human` und Eskalation an Martin.
 6. Akzeptanzkriterien, die nicht der Coder erfüllen kann, werden im Issue mit Owner markiert — `(Reviewer)`, `(Martin)`. Der Coder hakt sie nicht ab, sondern führt sie im PR als offen mit Owner.
