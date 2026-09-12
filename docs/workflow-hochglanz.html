@@ -30,7 +30,14 @@
       background: rgba(15, 23, 42, 0.5);
       border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto;
     }
-    .mermaid { display: flex; justify-content: center; background: #020617; }
+    .diagram-container {
+      background:
+        radial-gradient(ellipse at top, rgba(34, 211, 238, 0.06), transparent 60%),
+        linear-gradient(180deg, rgba(15, 23, 42, 0.7), rgba(2, 6, 23, 0.9));
+      box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.06), 0 20px 40px -20px rgba(0, 0, 0, 0.6);
+    }
+    .mermaid { display: flex; justify-content: center; background: transparent; }
+    .mermaid:not([data-processed]) { visibility: hidden; }
     .mermaid svg { max-width: 100% !important; height: auto; }
     .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
     .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
@@ -63,8 +70,7 @@
     .footer { text-align: center; margin-top: 2rem; color: #475569; font-size: 0.75rem; }
     .legend-inline { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; margin: 0.75rem 0 0 1.75rem; }
 
-    /* Mermaid dark theme integration */
-    .mermaid { --mermaid-theme: dark; }
+    /* Mermaid: Hintergrund kommt vom .diagram-container, Theme-Details in themeCSS (Script unten) */
     .mermaid svg { background: transparent !important; }
   </style>
 </head>
@@ -91,7 +97,7 @@
     <h2>Akteure &amp; Organigramm</h2>
     <div class="diagram-container">
       <pre class="mermaid">
-%%{init: {"theme":"dark","themeVariables":{"fontFamily":"JetBrains Mono","fontSize":"14px","primaryColor":"#0f172a","primaryTextColor":"#fff","primaryBorderColor":"#34d399","lineColor":"#475569","secondaryColor":"#1e293b","tertiaryColor":"#0f172a"},"flowchart":{"curve":"basis","nodeSpacing":60,"rankSpacing":70}}}%%
+%%{init: {"flowchart":{"curve":"basis","nodeSpacing":60,"rankSpacing":70}}}%%
 flowchart TB
     MARTIN["👤 <b>Martin</b><br/>Owner · einziger Merge-Zugriff<br/><small>Telegram-DM / repo-Thread</small>"]:::martin
     LEAD["🧠 <b>Hermes Lead (Orchestrator)</b><br/><small>Telegram-Bot · default-Profil<br/>Nimmt Aufträge · legt Issues an<br/>delegiert · Draft→Ready · Cleanup</small>"]:::lead
@@ -113,13 +119,13 @@ flowchart TB
     LEAD -->|"Meldung: PR fertig, CI grün"| MARTIN
     MARTIN -->|"Merge (D1)"| GH
 
-    classDef martin fill:#0e3a4d,stroke:#22d3ee,stroke-width:2px,color:#fff
-    classDef lead fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#fff
-    classDef research fill:#4c1d95,stroke:#a78bfa,stroke-width:2px,color:#fff
-    classDef coder fill:#78350f,stroke:#fbbf24,stroke-width:2px,color:#fff
-    classDef review fill:#881337,stroke:#fb7185,stroke-width:2px,color:#fff
-    classDef ci fill:#1e293b,stroke:#94a3b8,stroke-width:2px,color:#fff
-    classDef gh fill:#1c1917,stroke:#fbbf24,stroke-width:1px,color:#e2e8f0
+    classDef martin fill:#082f3a,stroke:#22d3ee,stroke-width:1.5px,color:#ecfeff
+    classDef lead fill:#052e24,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5
+    classDef research fill:#1e1538,stroke:#a78bfa,stroke-width:1.5px,color:#f5f3ff
+    classDef coder fill:#2b1d07,stroke:#fbbf24,stroke-width:1.5px,color:#fffbeb
+    classDef review fill:#2e0f1a,stroke:#fb7185,stroke-width:1.5px,color:#fff1f2
+    classDef ci fill:#111827,stroke:#94a3b8,stroke-width:1.5px,color:#f1f5f9
+    classDef github fill:#0b1220,stroke:#e2e8f0,stroke-width:1.5px,stroke-dasharray:4 3,color:#e2e8f0
       </pre>
     </div>
 
@@ -127,7 +133,7 @@ flowchart TB
     <h2>Pipeline (Swim-Lanes)</h2>
     <div class="diagram-container">
       <pre class="mermaid">
-%%{init: {"theme":"dark","themeVariables":{"fontFamily":"JetBrains Mono","fontSize":"13px","lineColor":"#475569"},"flowchart":{"nodeSpacing":40,"rankSpacing":55,"curve":"basis","useMaxWidth":false}}}%%
+%%{init: {"flowchart":{"nodeSpacing":40,"rankSpacing":55,"curve":"basis","useMaxWidth":false}}}%%
 flowchart TD
     subgraph SL1["👤 Martin — Owner"]
         direction LR
@@ -195,14 +201,14 @@ flowchart TD
     L7 --> F1
     F1 --> M2
 
-    classDef martin fill:#0e3a4d,stroke:#22d3ee,color:#fff
-    classDef lead fill:#064e3b,stroke:#34d399,color:#fff
-    classDef research fill:#4c1d95,stroke:#a78bfa,color:#fff
-    classDef coder fill:#78350f,stroke:#fbbf24,color:#fff
-    classDef review fill:#881337,stroke:#fb7185,color:#fff
-    classDef ci fill:#1e293b,stroke:#94a3b8,color:#fff
-    classDef d7 fill:#1e3a5f,stroke:#60a5fa,color:#fff
-    classDef gate fill:#334155,stroke:#94a3b8,color:#e2e8f0
+    classDef martin fill:#082f3a,stroke:#22d3ee,stroke-width:1.5px,color:#ecfeff
+    classDef lead fill:#052e24,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5
+    classDef research fill:#1e1538,stroke:#a78bfa,stroke-width:1.5px,color:#f5f3ff
+    classDef coder fill:#2b1d07,stroke:#fbbf24,stroke-width:1.5px,color:#fffbeb
+    classDef review fill:#2e0f1a,stroke:#fb7185,stroke-width:1.5px,color:#fff1f2
+    classDef ci fill:#111827,stroke:#94a3b8,stroke-width:1.5px,color:#f1f5f9
+    classDef d7 fill:#0c1a33,stroke:#60a5fa,stroke-width:1.5px,color:#eff6ff
+    classDef gate fill:#1e293b,stroke:#cbd5e1,stroke-width:1.5px,color:#f8fafc
       </pre>
     </div>
 
@@ -334,22 +340,79 @@ flowchart TD
   </div>
 
   <script>
+    // Premium-Dark-Theme: 'base' ist das einzige Mermaid-Theme, bei dem themeVariables vollständig greifen.
+    const themeCSS = `
+      .node rect, .node polygon, .node circle, .node path.basic {
+        filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.55));
+      }
+      .node rect { rx: 10px; ry: 10px; }
+      .nodeLabel { font-weight: 500; line-height: 1.45; }
+      .nodeLabel b { font-weight: 700; letter-spacing: -0.01em; }
+      .nodeLabel small { color: #94a3b8; font-weight: 400; }
+      .cluster rect {
+        rx: 16px; ry: 16px;
+        filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.45));
+      }
+      .cluster .cluster-label, .cluster .nodeLabel { font-weight: 700; color: #e2e8f0; letter-spacing: 0.01em; }
+      .cluster[id*="SL1"] > rect { stroke: #22d3ee66; fill: #22d3ee0a; }
+      .cluster[id*="SL2"] > rect { stroke: #34d39966; fill: #34d3990a; }
+      .cluster[id*="SL3"] > rect { stroke: #fbbf2466; fill: #fbbf240a; }
+      .cluster[id*="SL4"] > rect { stroke: #fb718566; fill: #fb71850a; }
+      .cluster[id*="SL5"] > rect { stroke: #60a5fa66; fill: #60a5fa0a; }
+      .flowchart-link { stroke-width: 1.6px; }
+      .edgeLabel, .edgeLabel p, .labelBkg { background-color: #0f172a; color: #cbd5e1; font-weight: 500; }
+      .edgeLabel rect { fill: #0f172a; opacity: 1; }
+      marker path, .marker { fill: #64748b; stroke: #64748b; }
+    `;
+
     mermaid.initialize({
-      startOnLoad: true,
-      theme: 'dark',
+      startOnLoad: false,
+      theme: 'base',
+      darkMode: true,
       themeVariables: {
-        fontFamily: 'JetBrains Mono, monospace',
-        fontSize: '13px'
+        darkMode: true,
+        background: '#020617',
+        fontFamily: '"JetBrains Mono", monospace',
+        fontSize: '14px',
+        textColor: '#e2e8f0',
+        primaryColor: '#0f172a',
+        primaryBorderColor: '#334155',
+        primaryTextColor: '#f1f5f9',
+        secondaryColor: '#1e293b',
+        secondaryBorderColor: '#334155',
+        secondaryTextColor: '#e2e8f0',
+        tertiaryColor: '#0b1222',
+        tertiaryBorderColor: '#1e293b',
+        tertiaryTextColor: '#cbd5e1',
+        mainBkg: '#0f172a',
+        nodeBorder: '#334155',
+        nodeTextColor: '#f1f5f9',
+        lineColor: '#64748b',
+        arrowheadColor: '#64748b',
+        edgeLabelBackground: '#0f172a',
+        clusterBkg: '#0b1222',
+        clusterBorder: '#1e293b',
+        titleColor: '#e2e8f0'
       },
+      themeCSS: themeCSS,
       flowchart: {
         nodeSpacing: 60,
         rankSpacing: 70,
         curve: 'basis',
-        padding: 15,
+        padding: 18,
         useMaxWidth: true
       },
       securityLevel: 'loose'
     });
+
+    // Erst rendern, wenn JetBrains Mono geladen ist: Mermaid misst die Label-Größen beim Rendern,
+    // mit Fallback-Font würden Labels danach abgeschnitten.
+    const fontsReady = Promise.all([
+      document.fonts.load('400 14px "JetBrains Mono"'),
+      document.fonts.load('700 14px "JetBrains Mono"')
+    ]).catch(() => {});
+    Promise.race([fontsReady, new Promise(r => setTimeout(r, 3000))])
+      .then(() => mermaid.run({ querySelector: '.mermaid' }));
   </script>
 </body>
 </html>
