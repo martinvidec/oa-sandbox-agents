@@ -99,13 +99,24 @@
       <pre class="mermaid">
 %%{init: {"flowchart":{"curve":"basis","nodeSpacing":60,"rankSpacing":70}}}%%
 flowchart TB
+    subgraph OG1["👤 Mensch"]
     MARTIN["👤 <b>Martin</b><br/>Owner · einziger Merge-Zugriff<br/><small>Telegram-DM / repo-Thread</small>"]:::martin
+    end
+
+    subgraph OG2["🧠 Orchestrierung"]
     LEAD["🧠 <b>Hermes Lead (Orchestrator)</b><br/><small>Telegram-Bot · default-Profil<br/>Nimmt Aufträge · legt Issues an<br/>delegiert · Draft→Ready · Cleanup</small>"]:::lead
+    end
+
+    subgraph OG3["⚒️ Ausführung"]
     RESEARCH["🔬 <b>Researcher</b><br/><small>Hermes @research / @deep-research<br/>Recherche · Specs → docs/specs/</small>"]:::research
     CODER["⚒️ <b>Coder — Claude Code</b><br/><small>headless · 1 Worktree pro Issue<br/>Implementiert · Draft-PR<br/>Budget: --max-turns</small>"]:::coder
     REVIEW["🔍 <b>Reviewer — Claude Code</b><br/><small>2. Run · sauberer Kontext<br/>Befunde als PR-Kommentare<br/>kein Write/Edit · max 2 Schleifen</small>"]:::review
+    end
+
+    subgraph OG4["🐙 Infrastruktur"]
     CI["⚙️ <b>GitHub CI</b><br/><small>YAML-Validierung<br/>Konventions-Checks<br/>grün = Merge-Voraussetzung</small>"]:::ci
     GH["🐙 <b>GitHub</b><br/><small>Issues = Auftragsqueue (Templates)<br/>Labels: ready → in-progress → review<br/>Branches: docs/&lt;nr&gt;-&lt;slug&gt;<br/>AGENTS.md = Repo-Contract</small>"]:::github
+    end
 
     MARTIN -->|"Auftrag"| LEAD
     LEAD -->|"Spec-Auftrag"| RESEARCH
@@ -359,6 +370,11 @@ flowchart TD
       .cluster[id*="SL3"] > rect { stroke: #fbbf2466; fill: #fbbf240a; }
       .cluster[id*="SL4"] > rect { stroke: #fb718566; fill: #fb71850a; }
       .cluster[id*="SL5"] > rect { stroke: #60a5fa66; fill: #60a5fa0a; }
+      /* Organigramm-Gruppen: Grundton aus clusterBkg/clusterBorder, hier nur Akzent je Ebene */
+      .cluster[id*="OG1"] > rect { stroke: #22d3ee66; fill: #22d3ee0a; }
+      .cluster[id*="OG2"] > rect { stroke: #34d39966; fill: #34d3990a; }
+      .cluster[id*="OG3"] > rect { stroke: #fbbf2466; fill: #fbbf240a; }
+      .cluster[id*="OG4"] > rect { stroke: #94a3b866; fill: #94a3b80a; stroke-dasharray: 6 4; }
       .flowchart-link { stroke-width: 1.6px; }
       .edgeLabel, .edgeLabel p, .labelBkg { background-color: #0f172a; color: #cbd5e1; font-weight: 500; }
       .edgeLabel rect { fill: #0f172a; opacity: 1; }
