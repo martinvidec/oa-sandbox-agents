@@ -26,11 +26,11 @@ Voraussetzung: Node.js ≥ 18. `npx playwright install chromium` lädt den Brows
 `~/Library/Caches/ms-playwright` (macOS) bzw. `~/.cache/ms-playwright` (Linux) — einmal pro Rechner.
 
 Technisch findet das Skript Playwright auch im Repo-Root oder im Arbeitsverzeichnis — **so wird es
-hier aber nicht installiert.** `.gitignore` listet nur `worktrees/`; `node_modules/`, `package.json`
-und `package-lock.json` im Repo-Root sind getrackt, und das `git add -A` eines Sync- oder
-WIP-Commits würde die ganze Installation einchecken und pushen (AGENTS.md D2, „Warum Playwright
-nicht im Repo-Root installiert wird"). Die Installation außerhalb des Repos ist deshalb Vorgabe,
-nicht Geschmacksfrage.
+hier aber nicht installiert.** `node_modules/`, `package.json` und `package-lock.json` im Repo-Root
+sind **nicht gitignored** (`.gitignore` listet nur `worktrees/`), weshalb das `git add -A` eines
+Sync- oder WIP-Commits die ganze Installation einchecken und pushen würde (AGENTS.md D2, „Warum
+Playwright nicht im Repo-Root installiert wird"). Die Installation außerhalb des Repos ist deshalb
+Vorgabe, nicht Geschmacksfrage.
 
 ## Aufruf
 
