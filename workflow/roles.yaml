@@ -70,6 +70,21 @@ forbidden_tools:
     match: konvention
     reason: "`--delete-last --yes` löscht den Beleg ohne Rückfrage (auch headless). Wie `--edit-last` durch die Freigabeform nicht ausschließbar — die Konvention sieht beide nicht vor."
 
+# Beidseitiger Abgleich der D2-Prosa (scripts/validate-workflow.mjs, Ebene 2c): Jede
+# Backtick-eingefasste `Bash(…)`-Form aus dem D2-Abschnitt von `file` braucht eine Entsprechung
+# in dieser Datei, und jeder `Bash(…)`-Eintrag aus `allowed_tools` braucht einen Beleg im
+# Set-Punkt seiner Rolle. `conditional_tools` sind von der zweiten Richtung ausgenommen — sie
+# stehen laut D2 gerade NICHT im Minimal-Set (Sync-Einträge, D8-Basiswechsel, D7-Vollendung),
+# ihre Begründung steht am Eintrag selbst. Alles andere, was auf einer Seite fehlen darf, steht
+# hier einzeln mit Begründung: Eine Ausnahme im Skript wäre eine stille Ausnahme.
+d2_prose_check:
+  file: AGENTS.md
+  excluded_entries:
+    - entry: "Bash(git status)"
+      side: agents_md
+      directive: D2
+      reason: "D2, „Befehle immer in der exakt freigegebenen Form — kein blankes `git status`/`git diff`\" nennt die argumentlose Form als Gegenbeispiel: „Den Eintrag zusätzlich argumentlos freizugeben (`Bash(git status)`) ist nicht nötig und bläht das Minimal-Set auf.\" Sie gehört also bewusst in kein Set."
+
 roles:
   # Reihenfolge = Reihenfolge der Rollen-Tabelle in AGENTS.md.
   - id: lead
