@@ -214,7 +214,7 @@ beim nächsten Mal zu viel ab. Derzeit gibt es genau eine — `Bash(git status)`
 `agents_md`, weil D2 die argumentlose Form ausdrücklich als Gegenbeispiel nennt („nicht nötig und
 bläht das Minimal-Set auf").
 
-Aktueller Umfang: **104 abgeglichene Formen** (Textzeile `AGENTS.md ↔ roles.yaml: … D2-Formen
+Aktueller Umfang: **107 abgeglichene Formen** (Textzeile `AGENTS.md ↔ roles.yaml: … D2-Formen
 abgeglichen`, JSON-Feld `geprueft.d2_prosa_formen`). Der Selbsttest prüft die Vergleichslogik gegen
 eine Miniatur-DSL und ein Miniatur-AGENTS.md statt gegen den echten Stand der Dateien — der ist der
 eigentliche Lauf. Jede
@@ -246,8 +246,15 @@ Die Abgrenzung der Review-Schleife von D8 ist ein eigener harter Befund (`d8-rev
 **Ebene 2e — Pipeline-Konsistenz** (`workflow/pipeline.yaml`): jeder Schritt referenziert nur
 existierende Zustände, Labels, Rollen und Fakt-Vokabular (`unbekannte-bedingung`,
 `schritt-unerreichbar`); die Bedingungen sind strukturierte Formen (`label_check`,
-`actor_check`, `ci_check` — eine pro Eintrag), freie Schlüssel werden gemeldet. Die vier Schritte
-bilden von `first` aus eine begehbare Kette.
+`actor_check`, `ci_check` — eine pro Eintrag), freie Schlüssel werden gemeldet. Die fünf Schritte
+bilden von `first` aus eine begehbare Kette — der fünfte ist der **Cleanup-Schritt** hinter dem
+Merge (Issue #50): `done → done` (er verändert den Zustand nicht — `Closes #N` hat das Issue
+geschlossen, `done` bleibt terminal, deshalb braucht `states.yaml` keinen Übergang dazu), Akteur
+ist der Lead vom Repo-Root und nicht delegiert (ein Worktree entfernt sich nicht selbst; der Lead
+setzt die Befehle im Zuge des Merge-Replys, nicht als isolierten Run — der Freigabe-Timeout). Die
+Postconditions nennen nur den lokalen Anteil (`worktree_removed`, `local_branch_absent` —
+`git branch --list <name>` leer); der Remote-Branch ist bei aktiver Repo-Einstellung
+(`delete_branch_on_merge`) eine Nebenwirkung des Merges und mit keinem Tool-Set ablesbar.
 
 | Neue Befundarten (Ebene 2d/2e, Auswahl) | Bedeutung |
 |---|---|

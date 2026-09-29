@@ -120,6 +120,11 @@ roles:
       - "Bash(git worktree *)"
       - "Bash(git checkout main)"
       - "Bash(git pull)"
+      # Lesende Gegenprobe zum Cleanup: `git branch --list <branch>` gibt nichts aus, wenn der
+      # Branch weg ist (AGENTS.md, „Lokal aufgeräumt heißt: kein Worktree, kein Branch"). Ohne
+      # den Eintrag wäre der Fakt `local_branch_absent` aus workflow/rules.yaml eine
+      # Behauptung — sein `command` wäre in keinem Tool-Set ausführbar.
+      - "Bash(git branch --list *)"
       - "Bash(git branch -D *)"
     must_not_include:
       - "Write"

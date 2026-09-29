@@ -694,7 +694,10 @@ export function regelKonsistenz(rules, ctx) {
     if (regelIds.has(k.id)) add('doppelte-id', `${wo}: ID doppelt vergeben`);
     regelIds.add(k.id);
     pruefeQuelle(wo, k.source);
-    abgedeckt.add(k.directive);
+    // Ohne `directive` deckt der Eintrag keine Direktive ab — das ist erlaubt (der Cleanup
+    // steht in der Worktree-Konvention, nicht in D1–D8) und darf die Abdeckungsprüfung
+    // unten nicht mit einem leeren Eintrag verwässern.
+    if (k.directive) abgedeckt.add(k.directive);
   }
 
   for (let n = 1; n <= 8; n++) {
@@ -798,8 +801,12 @@ export function pipelineKonsistenz(pipeline, ctx) {
     for (const feld of ['state_before', 'state_after']) {
       if (!zustaende.has(s[feld])) add('unbekannter-zustand', `${wo}: ${feld} \`${s[feld]}\` ist kein Zustand aus workflow/states.yaml`);
     }
-    // D1: In den Endzustand führt kein Agenten-Schritt.
-    if (doneState && s.state_after === doneState && s.actor !== 'human') {
+    // D1: In den Endzustand *führt* kein Agenten-Schritt. Geprüft wird der Zustandswechsel,
+    // nicht das bloße Stehen in `done`: Hinter dem Merge liegt der Cleanup-Schritt (Lead,
+    // `done` → `done`), der keinen Übergang auslöst und deshalb auch nichts an D1 rührt —
+    // er räumt auf, was der Merge hinterlässt. Ohne die Einschränkung auf den Wechsel
+    // meldete der Wächter genau diesen Schritt als Agenten-Merge.
+    if (doneState && s.state_after === doneState && s.state_before !== s.state_after && s.actor !== 'human') {
       add('d1-merge-schritt', `${wo}: führt nach \`${doneState}\`, actor ist aber \`${s.actor}\` — der Merge gehört Martin (D1 — Merge nur durch Martin)`);
     }
     // Ein Zustandswechsel braucht einen Übergang, und dessen Owner ist der Akteur des Schritts.
@@ -1170,6 +1177,10 @@ const REGEL_FAELLE = [
   { id: 'Regeln Gegenrichtung: Überschrift ohne Auflösung (ueberschriften = null)', dsl: regelnMit(r => { r.rules[1].source = { agents_md: 'D9 — Gibt es nicht' }; }), ctx: { ...MINI_REGEL_CTX, ueberschriften: null }, codes: [] },
   // --- Abdeckung D1–D8
   { id: 'Regeln: Direktive ohne Abdeckung', dsl: regelnMit(r => { r.documented_conventions = r.documented_conventions.filter(k => k.directive !== 'D5'); }), codes: ['direktive-ohne-abdeckung'] },
+  // Eine Konvention ohne `directive` (Cleanup: Worktree-Konvention, nicht D1–D8) ist zulässig
+  // und deckt nichts ab — sie darf weder melden noch eine fehlende Direktive verdecken.
+  { id: 'Regeln Gegenrichtung: Konvention ohne Direktive', dsl: regelnMit(r => { r.documented_conventions.push({ id: 'cleanup_konvention', convention: 'Remote-Branch löscht der Merge', why_not_checkable: 'kein Tool-Set liest die Repo-Einstellung', source: { agents_md: 'D1 — Merge nur durch Martin' } }); }), codes: [] },
+  { id: 'Regeln: Konvention ohne Direktive deckt keine Direktive ab', dsl: regelnMit(r => { r.documented_conventions = r.documented_conventions.filter(k => k.directive !== 'D5'); r.documented_conventions.push({ id: 'cleanup_konvention', convention: 'Remote-Branch löscht der Merge', why_not_checkable: 'kein Tool-Set liest die Repo-Einstellung', source: { agents_md: 'D1 — Merge nur durch Martin' } }); }), codes: ['direktive-ohne-abdeckung'] },
   {
     id: 'Regeln Gegenrichtung: Direktive als Regel statt als Konvention abgedeckt',
     dsl: regelnMit(r => {
@@ -1263,6 +1274,24 @@ const PIPELINE_FAELLE = [
   { id: 'Pipeline: Übergang gehört einer anderen Rolle', dsl: pipelineMit(p => { p.steps[0].actor = 'reviewer'; }), codes: ['uebergang-owner'] },
   { id: 'Pipeline Gegenrichtung: owner_fallback zählt als Owner', dsl: pipelineMit(p => { p.steps[0].actor = 'lead'; p.steps[0].preconditions[1].actor_check.role = 'lead'; }), codes: [] },
   { id: 'Pipeline: Agent führt in den Endzustand (D1)', dsl: pipelineMit(p => { p.steps[1].actor = 'lead'; p.steps[1].preconditions[0].actor_check.role = 'lead'; }), codes: ['d1-merge-schritt', 'uebergang-owner'] },
+  // Gegenrichtung zum Wächter darüber: Der Cleanup-Schritt hinter dem Merge gehört dem Lead
+  // und *bleibt* in `done`, statt dorthin zu führen — kein Zustandswechsel, kein Übergang,
+  // kein D1-Fall. Ohne diesen Fall fiele eine Rückkehr zur alten, zustandsblinden Prüfung
+  // erst im echten Lauf auf.
+  {
+    id: 'Pipeline Gegenrichtung: Cleanup-Schritt bleibt im Endzustand',
+    dsl: pipelineMit(p => {
+      p.steps[1].next = ['cleanup'];
+      p.steps.push({
+        id: 'cleanup', name: 'Cleanup nach dem Merge', actor: 'lead', workdir: 'repo-root', delegated: false,
+        description: 'Worktree entfernen, lokalen Branch löschen', state_before: 'done', state_after: 'done',
+        preconditions: [{ actor_check: { role: 'lead' } }],
+        postconditions: [{ fact_check: { fact: 'merged', expected: true } }],
+        next: [],
+      });
+    }),
+    codes: [],
+  },
   { id: 'Pipeline: unbekannter Zustand am Schritt', dsl: pipelineMit(p => { p.steps[0].state_before = 'nirgendwo'; }), codes: ['unbekannter-zustand'] },
   // --- strukturierte Bedingungen
   { id: 'Pipeline: label_check auf unbekannten Zustand', dsl: pipelineMit(p => { p.steps[0].preconditions[0].label_check.state = 'nirgendwo'; }), codes: ['unbekannter-zustand'] },
@@ -1582,11 +1611,15 @@ const rulesSchema = {
         },
       },
     },
+    // `directive` ist optional — wie bei `rules`: Nicht jede Konvention hängt an einer
+    // Direktive (der Cleanup steht in der Worktree-Konvention von AGENTS.md). Eine Direktive
+    // zu erfinden, nur damit das Pflichtfeld gefüllt ist, wäre der falsche Verweis an
+    // normativer Stelle; die Abdeckungsprüfung D1–D8 zählt ohnehin nur Einträge mit Feld.
     documented_conventions: {
       type: 'array',
       items: {
         type: 'object', additionalProperties: false,
-        required: ['id', 'directive', 'convention', 'why_not_checkable', 'source'],
+        required: ['id', 'convention', 'why_not_checkable', 'source'],
         properties: {
           id: regelId, directive: direktive, convention: nichtLeer,
           why_not_checkable: nichtLeer, source: quelleSchema,

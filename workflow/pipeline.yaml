@@ -152,4 +152,47 @@ steps:
           expected: true
     rules:
       - D1_merge_by_human
+    next:
+      - cleanup
+
+  # Der einzige Schritt hinter dem Merge. Er verändert den Zustand nicht (`done` → `done`):
+  # `Closes #N` hat das Issue geschlossen, Labels werden nicht mehr nachgezogen, und `done`
+  # bleibt terminal — workflow/states.yaml braucht deshalb keinen Übergang dazu. Genau diese
+  # Form — Agenten-Schritt, der im Endzustand *bleibt* — ist der Grund, warum der D1-Wächter
+  # `d1-merge-schritt` nur beim Zustandswechsel nach `done` greift; ein Schritt, der dorthin
+  # *führt*, gehört weiterhin Martin allein (Selbsttest: Gegenrichtung in
+  # scripts/validate-workflow.mjs).
+  #
+  # Akteur ist der Lead vom Repo-Root: Ein Worktree kann sich nicht selbst entfernen, und der
+  # Coder-Run ist mit dem PR beendet (AGENTS.md, Worktree-Konvention). Nicht delegiert — der
+  # Lead setzt die Befehle im Zuge des Merge-Replys ab, weil eine isoliert nachgeschobene
+  # Freigabe-Rückfrage in den Timeout läuft (AGENTS.md, „Der lokale `-D` läuft im Zuge des
+  # Merge-Replys, nicht als eigener Run").
+  #
+  # Die Postconditions nennen nur den lokalen Teil. Der Remote-Branch ist bei aktiver
+  # Repo-Einstellung eine Nebenwirkung des Merges und mit keinem Tool-Set ablesbar; er steht
+  # als `cleanup_remote_branch_by_setting` in den `documented_conventions` von rules.yaml.
+  - id: cleanup
+    name: "Cleanup nach dem Merge"
+    actor: lead
+    workdir: repo-root
+    delegated: false
+    description: "Vom Repo-Root, Befehle einzeln: `git checkout main`, `git pull`, `git worktree remove worktrees/<issue-nr>-<slug>`, `git worktree prune`, `git branch -D <präfix>/<issue-nr>-<slug>` — nach belegtem Merge (`gh pr view <n> --json state,mergedAt`)."
+    state_before: done
+    state_after: done
+    preconditions:
+      - actor_check:
+          role: lead
+      - fact_check:
+          fact: merged
+          expected: true
+    postconditions:
+      - fact_check:
+          fact: worktree_removed
+          expected: true
+      - fact_check:
+          fact: local_branch_absent
+          expected: true
+    rules:
+      - cleanup_after_merge
     next: []
