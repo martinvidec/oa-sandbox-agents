@@ -8,8 +8,10 @@
 //          Wert-Wildcard, Injektionsformen wie -C/-c/--git-dir=…, Verkettungs- und
 //          Umlenkungszeichen, Variablen-Expansion, nicht-terminale Wildcards und blanke
 //          Sammelpattern hart falsch), Subsumptionsvergleich gegen die Verbotsformen
-//          (eine Freigabe darf weder unter ein Verbot fallen noch eines mit abdecken)
-//          und Zustandsmaschinen-Checks (Erreichbarkeit, Owner je Übergang, Invarianten).
+//          (eine Freigabe darf weder unter ein Verbot fallen noch eines mit abdecken),
+//          beidseitiger Abgleich der `Bash(…)`-Formen aus den D2-Abschnitten von AGENTS.md
+//          gegen die Tool-Sets der DSL und Zustandsmaschinen-Checks (Erreichbarkeit, Owner
+//          je Übergang, Invarianten).
 // Ebene 3  Runtime-Replay: nicht in diesem MVP (Spec § 5.5).
 //
 // Exit-Code: 0 = keine Fehler (Warnungen erlaubt), 1 = Fehler gefunden,
@@ -265,6 +267,191 @@ export function verbotsbefunde(entry, liste) {
   return found;
 }
 
+// ------------------------------------ Ebene 2c: D2-Prosa von AGENTS.md gegen die Tool-Sets
+//
+// render-agents.mjs vergleicht nur die beiden Marker-Bereiche (Rollen- und Label-Tabelle). Die
+// Tool-Sets stehen in der Begründungsprosa von D2 und bleiben Handtext (Spec § 6) — ohne
+// Abgleich können Prosa und DSL auseinanderlaufen, ohne dass CI es merkt (M6 aus PR #45).
+
+// Grenzen des D2-Abschnitts: die D2-Aufzählung bis zur nächsten Direktiven-Aufzählung.
+const D2_START = /^\s*-\s+\*\*D2\b/;
+const D2_ENDE = /^\s*-\s+\*\*D[3-8]\b/;
+
+// Fenced-Code-Blöcke fliegen vor der Extraktion raus: Ihre Backticks würden die Inline-Spans
+// verschieben, und ein Befehlsbeispiel im Block ist keine Freigabeform (`git fetch origin` im
+// Sync-Block von D8 steht ohne `Bash(…)` da).
+function ohneCodebloecke(text) {
+  return text.replace(/^[ \t]*```[\s\S]*?^[ \t]*```/gm, '');
+}
+
+// Der D2-Abschnitt als Text; `null`, wenn AGENTS.md keine D2-Aufzählung hat.
+export function d2Abschnitt(markdown) {
+  const zeilen = (markdown ?? '').split('\n');
+  const von = zeilen.findIndex(z => D2_START.test(z));
+  if (von === -1) return null;
+  let bis = zeilen.length;
+  for (let i = von + 1; i < zeilen.length; i++) {
+    if (D2_ENDE.test(zeilen[i])) { bis = i; break; }
+  }
+  return zeilen.slice(von, bis).join('\n');
+}
+
+// Alle Backtick-eingefassten `Bash(…)`-Formen eines Textstücks, Reihenfolge erhalten, Dubletten
+// entfernt. Robust gegen Zeilenumbrüche: In der Prosa ist ein Aufzählungspunkt über mehrere
+// Zeilen umbrochen, eine Form kann also mitten im Backtick-Span umbrechen — der Whitespace
+// innerhalb des Spans wird deshalb auf ein Leerzeichen normalisiert. Der Span muss auf `)`
+// enden; „`Bash(a) und Bash(b)`" in einem Span wäre keine Freigabeform und fällt auf.
+export function inlineBashFormen(text) {
+  const formen = [];
+  for (const m of (text ?? '').matchAll(/`(Bash\([^`]*\))`/g)) {
+    const form = m[1].replace(/\s+/g, ' ').trim();
+    if (!formen.includes(form)) formen.push(form);
+  }
+  return formen;
+}
+
+// Das Label eines Aufzählungspunkts: der Text vor dem ersten `:`, sofern er ohne Backtick und
+// ohne Fettung auskommt. Die Set-Punkte sehen so aus (`  - Coder: …`), die Begründungspunkte
+// tragen eine fett gesetzte Überschrift (`  - **Kein blankes …**`) und liefern hier `null`.
+function blockLabel(text) {
+  const m = /^([^:\n`*]{1,80}):/.exec(text);
+  return m ? m[1].trim() : null;
+}
+
+// Zerlegt den D2-Abschnitt in Aufzählungspunkte samt ihrer Fortsetzungszeilen.
+export function d2Bloecke(abschnitt) {
+  const rohe = [];
+  for (const zeile of ohneCodebloecke(abschnitt ?? '').split('\n')) {
+    const m = /^(\s*)-\s+(.*)$/.exec(zeile);
+    if (m) rohe.push({ indent: m[1].length, zeilen: [m[2]] });
+    else if (rohe.length) rohe.at(-1).zeilen.push(zeile.trim());
+  }
+  return rohe.map(b => {
+    const text = b.zeilen.join('\n');
+    return { indent: b.indent, label: blockLabel(text), formen: inlineBashFormen(text) };
+  });
+}
+
+// „Lead (Delegation, Labels, …)" → `lead`; die Klammer ist Erläuterung, nicht Rollenname.
+function labelKern(label) {
+  return (label ?? '').toLowerCase().replace(/\(.*$/s, '').trim();
+}
+function passtZuRolle(label, rolle) {
+  const l = labelKern(label);
+  if (!l) return false;
+  const name = (rolle.name ?? '').toLowerCase();
+  return l === rolle.id || l === name || name.split('/').map(s => s.trim()).includes(l);
+}
+
+const istBash = e => /^Bash\(/.test(e ?? '');
+const bedingteFormen = rolle => (rolle.conditional_tools ?? []).flatMap(
+  c => [...(c.grants ?? []), ...(c.denies ?? []), ...(c.restrict_git_tools_to ?? [])]);
+
+// Beidseitiger Abgleich der D2-Prosa gegen die Tool-Sets von roles.yaml:
+//   Richtung a — jede in D2 genannte `Bash(…)`-Form braucht eine Entsprechung in der DSL. In
+//     einem Set-Punkt zählt nur das Set der eigenen Rolle (plus deren conditional_tools und die
+//     Verbotsformen, auf die der Punkt verweist); in der Begründungsprosa zählt die ganze DSL,
+//     weil die Punkte quer über die Rollen argumentieren.
+//   Richtung b — jeder `Bash(…)`-Eintrag aus `allowed_tools` braucht einen Beleg im Set-Punkt
+//     seiner Rolle. `conditional_tools` sind ausgenommen: Sie stehen laut D2 gerade NICHT im
+//     Minimal-Set (Sync-Einträge, D8-Basiswechsel, D7-Vollendung), ihre Begründung steht am
+//     Eintrag selbst (`reason`).
+// Als Entsprechung gilt auch eine Verbotsform: Die Prosa nennt sie als Gegenbeispiel, und der
+// Subsumptionsvergleich belegt sie (`Bash(git -C worktrees/* status)` unter `Bash(git -C * status)`).
+// Alles, was in keine dieser Kategorien fällt, steht als Ausnahme mit Begründung in der DSL
+// (`d2_prose_check.excluded_entries`, je mit `side`, `directive` und `reason`) — eine stille
+// Ausnahme im Skript gibt es nicht.
+export function d2Abgleich(markdown, roles) {
+  const befunde = [];
+  const add = (code, message) => befunde.push({ code, message });
+  const abschnitt = d2Abschnitt(markdown);
+  if (abschnitt === null) {
+    add('d2-abschnitt-fehlt', 'kein Aufzählungspunkt `- **D2 …**` gefunden — der Abgleich hat keine Quelle');
+    return { befunde, geprueft: 0, ausnahmen: [] };
+  }
+
+  const rollen = roles.roles ?? [];
+  const ausnahmen = (roles.d2_prose_check?.excluded_entries ?? []).map(a => ({ ...a, genutzt: false }));
+  const ausnahme = (entry, side) => {
+    const a = ausnahmen.find(x => x.entry === entry && x.side === side);
+    if (a) a.genutzt = true;
+    return Boolean(a);
+  };
+
+  const alleVerbote = [...(roles.forbidden_tools ?? []), ...rollen.flatMap(r => r.forbidden_tools ?? [])];
+  const verbotsFormen = alleVerbote.map(f => f.pattern);
+  const exceptFormen = alleVerbote.flatMap(f => f.except ?? []);
+  const dslUniversum = new Set([
+    ...rollen.flatMap(r => [...(r.allowed_tools ?? []), ...(r.must_not_include ?? []), ...bedingteFormen(r)]),
+    ...verbotsFormen, ...exceptFormen,
+  ]);
+  const alsVerbotBelegt = e => verbotsFormen.includes(e) || exceptFormen.includes(e) || verbotsbefunde(e, alleVerbote).length > 0;
+
+  const bloecke = d2Bloecke(abschnitt);
+  const setBloecke = [];
+  for (const [i, b] of bloecke.entries()) {
+    if (!b.label) continue;
+    const rolle = rollen.find(r => passtZuRolle(b.label, r));
+    if (rolle) setBloecke.push({ ...b, index: i, rolle });
+  }
+  let geprueft = 0;
+
+  for (const rolle of rollen) {
+    const eigene = setBloecke.filter(s => s.rolle.id === rolle.id);
+    if (eigene.length > 1) {
+      add('prosa-set-doppelt', `\`${rolle.id}\`: der D2-Abschnitt nennt ${eigene.length} Set-Punkte für die Rolle (${eigene.map(s => `„${s.label}"`).join(', ')}) — welcher gilt, ist nicht entscheidbar`);
+    }
+    if (eigene.length === 0) {
+      if (rolle.d2_set) add('prosa-set-fehlt', `\`${rolle.id}\`: \`d2_set\` ist true, aber der D2-Abschnitt von AGENTS.md nennt kein Minimal-Set für die Rolle`);
+      continue;
+    }
+    if (!rolle.d2_set) {
+      add('prosa-set-ohne-d2-set', `\`${rolle.id}\`: der D2-Abschnitt nennt ein Minimal-Set („${eigene[0].label}"), in der DSL ist \`d2_set\` aber false`);
+    }
+    const prosaFormen = [...new Set(eigene.flatMap(s => s.formen))];
+    const dslFormen = (rolle.allowed_tools ?? []).filter(istBash);
+
+    // Richtung b: Allowlist-Eintrag ohne Beleg im Set-Punkt der eigenen Rolle.
+    for (const e of dslFormen) {
+      geprueft++;
+      if (prosaFormen.includes(e)) continue;
+      if (ausnahme(e, 'roles_yaml')) continue;
+      add('dsl-ohne-prosa', `\`${rolle.id}\`/allowed_tools: \`${e}\` kommt im D2-Set-Punkt „${eigene[0].label}" von AGENTS.md nicht vor — Prosa und DSL laufen auseinander`);
+    }
+    // Richtung a: Form im Set-Punkt, die die DSL für diese Rolle nicht führt.
+    const eigenesUniversum = new Set([
+      ...dslFormen, ...bedingteFormen(rolle).filter(istBash), ...(rolle.must_not_include ?? []).filter(istBash),
+    ]);
+    for (const e of prosaFormen) {
+      geprueft++;
+      if (eigenesUniversum.has(e) || alsVerbotBelegt(e) || ausnahme(e, 'agents_md')) continue;
+      add('prosa-ohne-dsl', `AGENTS.md D2, Set-Punkt „${eigene[0].label}": \`${e}\` hat in roles.yaml keine Entsprechung für \`${rolle.id}\` (weder im Set noch in \`conditional_tools\` noch als Verbotsform)`);
+    }
+  }
+
+  // Begründungsprosa: Punkte, die keinen Set-Punkt bilden. Sie argumentieren quer über die
+  // Rollen („steht in allen drei Sets"), deshalb genügt hier ein Beleg irgendwo in der DSL.
+  const setIndizes = new Set(setBloecke.map(s => s.index));
+  for (const [i, b] of bloecke.entries()) {
+    if (setIndizes.has(i)) continue;
+    for (const e of b.formen) {
+      geprueft++;
+      if (dslUniversum.has(e) || alsVerbotBelegt(e) || ausnahme(e, 'agents_md')) continue;
+      add('prosa-ohne-dsl', `AGENTS.md D2, Begründungsprosa: \`${e}\` hat in roles.yaml keine Entsprechung (kein Set-Eintrag, keine Zusatzfreigabe, keine Verbotsform)`);
+    }
+  }
+
+  // Eine Ausnahme, die nichts ausnimmt, ist die stille Variante mit Zusatzschritt: Sie bleibt
+  // stehen, wenn die Abweichung längst behoben ist, und deckt beim nächsten Mal zu viel ab.
+  for (const a of ausnahmen) {
+    if (!a.genutzt) {
+      add('ausnahme-ohne-bezug', `d2_prose_check/\`${a.entry}\` (side: ${a.side}): der Abgleich findet die Abweichung nicht — die Ausnahme nimmt nichts aus`);
+    }
+  }
+
+  return { befunde, geprueft, ausnahmen };
+}
+
 // --------------------------------------------------------------------------------- Selbsttest
 
 // Verstoßformen, die die Analyse hart melden muss. Die ersten drei sind die historischen Fälle
@@ -296,16 +483,11 @@ const ERLAUBTE_FORMEN = [
   'Bash(git worktree *)', 'Bash(git merge origin/main)', 'Bash(git fetch origin)',
   'Bash(gh pr comment *)', 'Bash(gh issue edit --body *)', 'Bash(git checkout main)',
 ];
-// Verbotsliste für den Subsumptionsteil des Selbsttests — dieselben Formen und Modi wie in
-// roles.yaml, hier aber fest verdrahtet, damit der Selbsttest ohne die YAML-Dateien läuft.
-const VERBOTSFORMEN_TEST = [
-  { pattern: 'Bash(git *)', directive: 'D2', match: 'blanket', reason: 'blankes Sammelpattern' },
-  { pattern: 'Bash(git push *)', directive: 'D2', except: ['Bash(git push -u origin HEAD)'], reason: 'Push-Guard' },
-  { pattern: 'Bash(gh pr merge *)', directive: 'D1', reason: 'Merge nur durch Martin' },
-  { pattern: 'Bash(gh pr edit *)', directive: 'D2', reason: 'ersetzt den PR-Body vollständig' },
-  { pattern: 'Bash(gh issue edit *)', directive: 'D2', except: ['Bash(gh issue edit --add-label *)', 'Bash(gh issue edit --remove-label *)', 'Bash(gh issue edit --body *)'], reason: 'ersetzt den Issue-Body vollständig' },
-  { pattern: 'Bash(gh pr comment --edit-last *)', directive: 'D4', match: 'konvention', reason: 'ersetzt den letzten eigenen Kommentar' },
-];
+// Die Verbotsformen für den Subsumptionsteil kommen aus `forbidden_tools` von roles.yaml und
+// werden dem Selbsttest übergeben: Eine zweite, handgepflegte Kopie der Liste im Skript würde
+// stumm auseinanderlaufen (Review-Befund R2 zu PR #45). Die Fälle unten behalten ihre
+// Beispielformen — sie sind das Geprüfte, nicht die Regel, gegen die geprüft wird.
+//
 // Freigaben, die ein Verbot mit abdecken (Sammelpattern auf Subcommand-Ebene) bzw. darunter
 // fallen — beides muss der Subsumptionsvergleich hart melden.
 const VERBOTS_VERSTOESSE = [
@@ -322,12 +504,97 @@ const VERBOTS_ERLAUBT = [
   'Bash(gh issue create *)', 'Bash(git worktree *)',
 ];
 
-function runSelftest() {
+// Fälle für den beidseitigen D2-Prosa-Abgleich. Geprüft wird gegen eine Miniatur-DSL und ein
+// Miniatur-AGENTS.md: Der Selbsttest soll die Vergleichslogik prüfen, nicht den jeweiligen Stand
+// der echten Dateien — der ist der eigentliche Lauf. Jede Richtung braucht einen Fall, der
+// meldet, und einen, der schweigen muss; ein Fehlalarm hier wäre so teuer wie ein Durchrutscher.
+const D2_MINI_ROLLEN = {
+  forbidden_tools: [
+    { pattern: 'Bash(git *)', directive: 'D2', match: 'blanket', reason: 'blankes Sammelpattern' },
+  ],
+  d2_prose_check: { file: 'AGENTS.md', excluded_entries: [] },
+  roles: [
+    {
+      id: 'coder', name: 'Coder', d2_set: true,
+      allowed_tools: ['Read', 'Bash(git status *)', 'Bash(git add *)'],
+      conditional_tools: [{ id: 'sync_run', directive: 'D8', reason: 'Sync-Einträge, D8', grants: ['Bash(git merge origin/main)'] }],
+    },
+  ],
+};
+// Miniatur-AGENTS.md: D2-Aufzählung, ein Set-Punkt, optional ein Begründungspunkt, dann D3 —
+// mehr braucht die Abschnittsgrenze nicht.
+const d2Mini = (setZeilen, prosa) => [
+  '- **D2 — Budget-Guards:** Delegationen immer mit `--max-turns`. Minimal-Set:',
+  ...setZeilen.map((z, i) => (i === 0 ? `  - ${z}` : `    ${z}`)),
+  ...(prosa ? [`  - ${prosa}`] : []),
+  '- **D3 — Kleine PRs:** Ein PR = ein Issue.',
+].join('\n');
+const D2_FAELLE = [
+  {
+    id: 'Richtung a: Prosa-Form ohne DSL-Entsprechung',
+    md: d2Mini(['Coder: `Read`, `Bash(git status *)`, `Bash(git add *)`, `Bash(gh pr merge *)`']),
+    code: 'prosa-ohne-dsl',
+  },
+  {
+    id: 'Richtung a Gegenrichtung: Verbotsform als Gegenbeispiel',
+    md: d2Mini(['Coder: `Read`, `Bash(git status *)`, `Bash(git add *)`'], 'Kein blankes `Bash(git *)`.'),
+    code: null,
+  },
+  {
+    id: 'Richtung b: Allowlist-Eintrag ohne Prosa-Beleg',
+    md: d2Mini(['Coder: `Read`, `Bash(git status *)`']),
+    code: 'dsl-ohne-prosa',
+  },
+  {
+    id: 'Richtung b Gegenrichtung: conditional_tools braucht keinen Beleg',
+    md: d2Mini(['Coder: `Read`, `Bash(git status *)`, `Bash(git add *)`']),
+    code: null,
+  },
+  {
+    id: 'Zeilenumbruch mitten im Backtick-Span',
+    md: d2Mini(['Coder: `Read`, `Bash(git status *)`, `Bash(git', 'add *)`']),
+    code: null,
+  },
+  {
+    id: 'Set-Punkt fehlt trotz d2_set',
+    md: d2Mini(['Kein Set, nur Prosa mit `Bash(git status *)` und `Bash(git add *)`.']),
+    code: 'prosa-set-fehlt',
+  },
+  {
+    id: 'Ausnahme ohne Bezug',
+    md: d2Mini(['Coder: `Read`, `Bash(git status *)`, `Bash(git add *)`']),
+    roles: {
+      ...D2_MINI_ROLLEN,
+      d2_prose_check: {
+        file: 'AGENTS.md',
+        excluded_entries: [{ entry: 'Bash(gh pr view *)', side: 'agents_md', directive: 'D2', reason: 'veraltete Ausnahme' }],
+      },
+    },
+    code: 'ausnahme-ohne-bezug',
+  },
+  {
+    id: 'Ausnahme greift: Prosa-Form bewusst ohne DSL-Eintrag',
+    md: d2Mini(['Coder: `Read`, `Bash(git status *)`, `Bash(git add *)`'], 'Argumentlos (`Bash(git status)`) ist nicht nötig.'),
+    roles: {
+      ...D2_MINI_ROLLEN,
+      d2_prose_check: {
+        file: 'AGENTS.md',
+        excluded_entries: [{ entry: 'Bash(git status)', side: 'agents_md', directive: 'D2', reason: 'bläht das Minimal-Set auf' }],
+      },
+    },
+    code: null,
+  },
+];
+
+// `verbotsformen` kommt aus roles.yaml (R2). Ohne die Datei — `--selftest` ohne Setup — laufen
+// die übrigen Fälle weiter und die Subsumptionsfälle werden als übersprungen ausgewiesen.
+function runSelftest(verbotsformen) {
   const ergebnis = [];
   const fall = (name, entry, erwartet, gefunden, ok, code) => {
     ergebnis.push({ fall: name, entry, erwartet, gefunden, ok });
     if (!ok) err('selftest', code, `${name}: \`${entry}\` — erwartet ${erwartet}, gefunden: ${gefunden.join(', ') || 'nichts'}`);
   };
+  const uebersprungen = (name, entry, erwartet) => ergebnis.push({ fall: name, entry, erwartet, gefunden: [], ok: true, uebersprungen: true });
   for (const f of HISTORISCHE_VERSTOESSE) {
     const hart = classifyToolPattern(f.entry).filter(b => b.level === 'error').map(b => b.code);
     fall(f.id, f.entry, f.code, hart, hart.includes(f.code), 'historischer-fall-nicht-gefangen');
@@ -337,12 +604,19 @@ function runSelftest() {
     fall('erlaubte Form', entry, 'kein Fehler', hart, hart.length === 0, 'fehlalarm');
   }
   for (const f of VERBOTS_VERSTOESSE) {
-    const codes = verbotsbefunde(f.entry, VERBOTSFORMEN_TEST).map(b => b.code);
+    if (!verbotsformen) { uebersprungen(f.id, f.entry, f.code); continue; }
+    const codes = verbotsbefunde(f.entry, verbotsformen).map(b => b.code);
     fall(f.id, f.entry, f.code, codes, codes.includes(f.code), 'verbotsbezug-nicht-gefangen');
   }
   for (const entry of VERBOTS_ERLAUBT) {
-    const codes = verbotsbefunde(entry, VERBOTSFORMEN_TEST).map(b => b.code);
+    if (!verbotsformen) { uebersprungen('erlaubt trotz Verbotsliste', entry, 'kein Befund'); continue; }
+    const codes = verbotsbefunde(entry, verbotsformen).map(b => b.code);
     fall('erlaubt trotz Verbotsliste', entry, 'kein Befund', codes, codes.length === 0, 'fehlalarm');
+  }
+  for (const f of D2_FAELLE) {
+    const codes = d2Abgleich(f.md, f.roles ?? D2_MINI_ROLLEN).befunde.map(b => b.code);
+    const ok = f.code ? codes.includes(f.code) : codes.length === 0;
+    fall(f.id, f.md, f.code ?? 'kein Befund', codes, ok, 'd2-abgleich-fall-nicht-gefangen');
   }
   return ergebnis;
 }
@@ -365,13 +639,38 @@ const forbiddenList = {
   },
 };
 
+// Ausnahmen des D2-Prosa-Abgleichs: strukturiert, mit Seite, Direktive und Begründung. `side`
+// sagt, wo der Eintrag steht und deshalb auf der anderen Seite fehlen darf — `agents_md`: in der
+// D2-Prosa genannt, bewusst ohne DSL-Eintrag; `roles_yaml`: Allowlist-Eintrag ohne Prosa-Beleg.
+const d2ProseCheckSchema = {
+  type: 'object', additionalProperties: false,
+  required: ['file', 'excluded_entries'],
+  properties: {
+    file: { type: 'string', minLength: 1 },
+    excluded_entries: {
+      type: 'array', uniqueItems: true,
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['entry', 'side', 'directive', 'reason'],
+        properties: {
+          entry: toolEntry,
+          side: { enum: ['agents_md', 'roles_yaml'] },
+          directive: { type: 'string', pattern: '^D[1-8]$' },
+          reason: { type: 'string', minLength: 1 },
+        },
+      },
+    },
+  },
+};
+
 const rolesSchema = {
   type: 'object', additionalProperties: false,
-  required: ['version', 'source', 'forbidden_tools', 'roles'],
+  required: ['version', 'source', 'forbidden_tools', 'd2_prose_check', 'roles'],
   properties: {
     version: { const: 1 },
     source: { type: 'string', minLength: 1 },
     forbidden_tools: forbiddenList,
+    d2_prose_check: d2ProseCheckSchema,
     roles: {
       type: 'array', minItems: 1,
       items: {
@@ -522,13 +821,32 @@ function pruefeSchema(ajv, schema, daten, datei) {
   return false;
 }
 
-const selftest = runSelftest();
+// `--selftest` ohne Setup: Die Verbotsformen stehen in roles.yaml (R2), gelesen werden sie hier
+// mit js-yaml allein — ajv braucht nur die Schemaprüfung. Fehlt das Modul oder die Datei, läuft
+// der Selbsttest ohne den Subsumptionsteil und weist die Fälle als übersprungen aus.
+function verbotsformenFuerSelbsttest() {
+  const yamlMod = resolveModule('js-yaml');
+  const p = path.join(root, 'workflow/roles.yaml');
+  if (!yamlMod || !fs.existsSync(p)) return null;
+  try {
+    return ((yamlMod.default ?? yamlMod).load(fs.readFileSync(p, 'utf8')) ?? {}).forbidden_tools ?? null;
+  } catch {
+    return null;
+  }
+}
+
 if (selftestOnly) {
+  const verbotsformen = verbotsformenFuerSelbsttest();
+  if (!verbotsformen) {
+    warn('selftest', 'verbotsliste-nicht-geladen', 'workflow/roles.yaml nicht lesbar (js-yaml nicht auflösbar, Datei fehlt oder kaputt) — die Subsumptionsfälle wurden übersprungen; Setup siehe docs/validate-setup.md');
+  }
+  const selftest = runSelftest(verbotsformen);
   const ok = errors.length === 0;
   if (jsonOut) console.log(JSON.stringify({ ok, selftest, errors, warnings }, null, 2));
   else {
-    console.log('Selbsttest der Wildcard-Sicherheitsanalyse');
-    for (const s of selftest) console.log(`  ${s.ok ? 'ok  ' : 'FEHL'} ${s.entry.replace(/\n/g, '\\n')} → erwartet: ${s.erwartet}, gefunden: ${s.gefunden.join(', ') || '—'}`);
+    console.log('Selbsttest der Sicherheitsanalyse und des D2-Prosa-Abgleichs');
+    for (const s of selftest) console.log(`  ${s.uebersprungen ? 'übsp' : s.ok ? 'ok  ' : 'FEHL'} ${s.entry.replace(/\n/g, '\\n')} → erwartet: ${s.erwartet}, gefunden: ${s.gefunden.join(', ') || '—'}`);
+    for (const w of warnings) console.log(`  Warnung: ${w.message}`);
     if (!ok) for (const e of errors) console.log(`  Fehler: ${e.message}`);
   }
   process.exit(ok ? 0 : 1);
@@ -540,8 +858,13 @@ const roles = ladeYaml('workflow/roles.yaml');
 const states = ladeYaml('workflow/states.yaml');
 const rolesOk = pruefeSchema(ajv, rolesSchema, roles, 'workflow/roles.yaml');
 const statesOk = pruefeSchema(ajv, statesSchema, states, 'workflow/states.yaml');
+// Erst nach der Schemaprüfung: Eine kaputte `forbidden_tools`-Liste würde im Selbsttest
+// Folgefehler erzeugen, die vom eigentlichen Schema-Befund ablenken.
+if (!rolesOk) warn('selftest', 'verbotsliste-nicht-geladen', 'workflow/roles.yaml erfüllt das Schema nicht — die Subsumptionsfälle des Selbsttests wurden übersprungen');
+const selftest = runSelftest(rolesOk ? roles.forbidden_tools : null);
 
 let toolEintraege = 0;
+let prosaFormen = 0;
 if (rolesOk) {
   const R = 'workflow/roles.yaml';
   const ids = new Set();
@@ -641,6 +964,17 @@ if (rolesOk) {
         }
       }
     }
+  }
+
+  // Ebene 2c: die D2-Prosa von AGENTS.md gegen die Tool-Sets, in beide Richtungen.
+  const prosaDatei = roles.d2_prose_check.file;
+  const prosaPfad = path.join(root, prosaDatei);
+  if (!fs.existsSync(prosaPfad)) {
+    err(R, 'prosa-datei-fehlt', `d2_prose_check.file nennt \`${prosaDatei}\` — die Datei gibt es im Repo nicht`);
+  } else {
+    const abgleich = d2Abgleich(fs.readFileSync(prosaPfad, 'utf8'), roles);
+    prosaFormen = abgleich.geprueft;
+    for (const b of abgleich.befunde) err(`${prosaDatei} ↔ ${R}`, b.code, b.message);
   }
 }
 
@@ -783,7 +1117,13 @@ const ok = errors.length === 0;
 const report = {
   ok,
   root,
-  geprueft: { rollen: rolesOk ? roles.roles.length : 0, tool_eintraege: toolEintraege, zustaende: statesOk ? states.states.length : 0, uebergaenge: statesOk ? states.transitions.length : 0 },
+  geprueft: {
+    rollen: rolesOk ? roles.roles.length : 0,
+    tool_eintraege: toolEintraege,
+    d2_prosa_formen: prosaFormen,
+    zustaende: statesOk ? states.states.length : 0,
+    uebergaenge: statesOk ? states.transitions.length : 0,
+  },
   selftest,
   errors,
   warnings,
@@ -793,8 +1133,9 @@ if (jsonOut) {
   console.log(JSON.stringify(report, null, 2));
 } else {
   console.log('Workflow-DSL-Validierung');
-  console.log(`  Selbsttest der Sicherheitsanalyse: ${selftest.filter(s => s.ok).length}/${selftest.length} Fälle wie erwartet`);
+  console.log(`  Selbsttest der Analysen: ${selftest.filter(s => s.ok).length}/${selftest.length} Fälle wie erwartet`);
   console.log(`  workflow/roles.yaml:  ${report.geprueft.rollen} Rollen, ${report.geprueft.tool_eintraege} Tool-Einträge`);
+  console.log(`  ${rolesOk ? roles.d2_prose_check.file : 'AGENTS.md'} ↔ roles.yaml: ${report.geprueft.d2_prosa_formen} D2-Formen abgeglichen`);
   console.log(`  workflow/states.yaml: ${report.geprueft.zustaende} Zustände, ${report.geprueft.uebergaenge} Übergänge`);
   if (warnings.length) {
     console.log(`\nWarnungen (${warnings.length}):`);
