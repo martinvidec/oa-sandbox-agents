@@ -33,6 +33,8 @@ jobs:
 
   workflow-dsl:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -44,7 +46,7 @@ jobs:
       - name: Validator-Abhängigkeiten außerhalb des Repos installieren
         run: |
           mkdir -p "$RUNNER_TEMP/oa-validate"
-          npm install --prefix "$RUNNER_TEMP/oa-validate" ajv js-yaml
+          npm install --ignore-scripts --prefix "$RUNNER_TEMP/oa-validate" ajv@^8 js-yaml@^4
       - name: Workflow-DSL validieren (Schema, Wildcard-Sicherheitsanalyse, Zustandsmaschine)
         env:
           NODE_PATH: ${{ runner.temp }}/oa-validate/node_modules
