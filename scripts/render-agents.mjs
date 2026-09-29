@@ -57,8 +57,12 @@ function ladeYaml(datei) {
 const roles = ladeYaml('workflow/roles.yaml');
 const states = ladeYaml('workflow/states.yaml');
 
+// Zelltext aus der DSL: Ein `|` würde die Tabellenspalte sprengen und beim Vergleich als
+// zusätzliche Zelle auftauchen — es wird escaped, Zeilenumbrüche werden zu Leerzeichen.
+// Ein bereits escaptes `\|` bleibt, wie es ist.
+const zellText = wert => String(wert).replace(/\s*[\r\n]+\s*/g, ' ').replace(/(?<!\\)\|/g, '\\|');
 const zeile = zellen => `| ${zellen.join(' | ')} |`;
-const tabelle = (kopf, reihen) => [zeile(kopf), `|${kopf.map(() => '---').join('|')}|`, ...reihen.map(zeile)].join('\n');
+const tabelle = (kopf, reihen) => [zeile(kopf), `|${kopf.map(() => '---').join('|')}|`, ...reihen.map(r => zeile(r.map(zellText)))].join('\n');
 
 function rollenTabelle() {
   return tabelle(['Rolle', 'Realisierung', 'Scope'],
