@@ -112,11 +112,18 @@ sind **Fehler**:
 | `sammelpattern` | `git *`, `gh *` | blankes Sammelpattern; deckt auch die Formen ab, die D1/D2 verbieten |
 | `befehlskette` | `a; b`, `a && b`, `` ` ``, `$(…)` | verkettete Kommandos hängen an einer eigenen Freigabe (D2) |
 | `binary-wildcard` | `* status` | matcht beliebige Programme |
-| `verbotener-eintrag` | Eintrag steht in `forbidden_tools` | exakte Verbotsform im Set |
+| `verbotener-eintrag` | Eintrag steht in `forbidden_tools` | Verbotsform — geprüft per Subsumptionsvergleich: die Form selbst und alles, was unter sie fällt (Tokenfolge bis zum ersten `*`); Modus `match: exact` für Ausnahmen |
+| `verbotene-form` | Eintrag fällt unter eine Verbotsform aus `forbidden_tools` | z. B. `Bash(git push origin HEAD:main)` unter `Bash(git push *)` (D1), `Bash(gh api --method PUT …)` unter `Bash(gh api *)` |
+| `freigabe-deckt-verbot` | Sammelpattern deckt eine Verbotsform mit ab | z. B. `Bash(gh pr *)` deckt `gh pr merge` (D1) und `gh pr edit` (D2) mit — Tiefe 2 ist für Präfixe mit Verbot darunter hart |
 | `d1-merge` | `merge_allowed: true`, `Bash(gh pr merge *)` | Merge nur durch Martin (D1) |
 
-Warnungen sind u.a. `wildcard-mittig` (`*` nicht in letzter Position), `wildcard-eingebettet`
-(`worktrees/*`), `inline-zuweisung` und `sammelpattern-unklar`.
+Bei Binaries aus `BLANKET_HARD` (git, gh, node, npm, npx, bash, sh, zsh, env,
+python, python3) ist jedes `*` außerhalb der letzten Position ein **Fehler**
+(`wildcard-mittig`/`wildcard-eingebettet`) — der `*` matcht beliebigen Text, auch
+die nachfolgenden Tokens (AGENTS.md D2, Begründung zu B1). Warnung bleibt `wildcard-mittig`
+nur bei Binaries außerhalb dieser Liste. Weitere Warnungen: `inline-zuweisung`
+und `sammelpattern-unklar`. Auch `injektionsflag` erkennt die `=`-Schreibweise
+(`--git-dir=<wert>` wird vor dem Vergleich am `=` abgeschnitten).
 
 Die drei historischen Verstoßformen — `-C`-Wildcard (B1), `NODE_PATH=`-Inline-Prefix und blankes
 `git *` — sind als Selbsttest hinterlegt und laufen bei **jedem** Lauf mit: Meldet die Analyse
