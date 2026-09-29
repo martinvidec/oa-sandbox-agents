@@ -4,6 +4,7 @@
 
 ## Rollen
 
+<!-- dsl:roles-table:start -->
 | Rolle | Realisierung | Scope |
 |---|---|---|
 | **Orchestrator/Lead** | Hermes default-Profil (Telegram) | Nimmt Aufträge, legt Issues an, delegiert, fasst zusammen. Schreibt KEINEN Code. |
@@ -11,6 +12,13 @@
 | **Coder** | Claude Code (headless, 1 Worktree pro Issue) | Implementiert Issue in eigenem Worktree, Branch, Commits, Draft-PR |
 | **Reviewer** | Claude Code, 2. Run mit sauberem Kontext | Reviewt PR gegen AGENTS.md + Akzeptanzkriterien, Befunde als PR-Kommentare |
 | **Tester** | Claude Code / oa-playwright-cli (nach Bedarf) | E2E/QA-Aufgaben in eigenem Worktree |
+<!-- dsl:roles-table:end -->
+
+> Diese Tabelle wird aus [`workflow/roles.yaml`](workflow/roles.yaml) generiert
+> (`node scripts/render-agents.mjs --write`); CI prüft generiert gegen eingecheckt. Änderungen
+> an Rollen, Tool-Sets oder Budgets gehören in die DSL, nicht in diese Tabelle
+> ([`docs/validate-setup.md`](docs/validate-setup.md)). Die Begründungsprosa der Direktiven
+> unten bleibt Handtext.
 
 ## Arbeitsaufträge (Pipeline)
 
@@ -18,12 +26,18 @@ Auftrag (Martin, Telegram oder Issue) → ggf. Spec (`docs/specs/`) → **GitHub
 
 Labels — jeder Übergang hat genau einen Owner, sonst bleiben abgebrochene Runs falsch etikettiert liegen:
 
+<!-- dsl:label-table:start -->
 | Label | wird gesetzt von | Auslöser |
 |---|---|---|
 | `agent:ready` | Lead (bzw. Issue-Template automatisch) | Issue ist briefing-fertig |
 | `agent:in-progress` | Lead beim Delegieren | Coder-Run startet |
 | `agent:review` | Coder, sobald Draft-PR offen und CI grün (Lead, wenn er nach D7 vollendet) | PR wartet auf Reviewer-Run |
 | `needs-human` / `blocked` | jeder Agent, der nicht weiterkommt | Rückfrage an Martin nötig / externe Blockade |
+<!-- dsl:label-table:end -->
+
+> Auch diese Tabelle wird generiert — aus [`workflow/states.yaml`](workflow/states.yaml), das
+> zusätzlich die Übergänge zwischen den Labels samt Owner und die Invarianten
+> (`max_review_loops`, `done_requires`) trägt.
 
 Nach dem Merge räumt `Closes #N` das Issue selbst ab; Labels müssen dann nicht mehr nachgezogen werden.
 
@@ -188,6 +202,8 @@ docs/              Spec-Doku (01-konzept … 04-spezifikation), workflow.md
 docs/specs/        Feature-Specs (bei Bedarf — noch nicht angelegt, entsteht beim ersten größeren Auftrag)
 docs/experiments/  Ergebnisse von Experiment-Issues (z.B. pilot-pipeline.md)
 agentic-workflow/  Research (entwurf, report, quellen)
+workflow/          Workflow-DSL: roles.yaml (Rollen, Tool-Sets, Budgets), states.yaml (Label-Zustandsmaschine)
+scripts/           validate-workflow.mjs (prüft die DSL, in CI), render-agents.mjs (generiert die Tabellen oben), verify-mermaid.mjs
 .github/           ISSUE_TEMPLATE/, workflows/ci.yml
 worktrees/         gitignore'd, Arbeitsverzeichnisse der Coding-Agenten
 ```

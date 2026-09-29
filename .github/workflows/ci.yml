@@ -30,3 +30,28 @@ jobs:
               sys.exit(1)
           print("YAML OK")
           PYEOF
+
+  workflow-dsl:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Abhängigkeiten außerhalb des Checkouts — im Repo-Root sind node_modules/ und
+      # package.json nicht gitignored (AGENTS.md D2, „Warum Playwright nicht im Repo-Root
+      # installiert wird"). Gefunden werden sie über NODE_PATH, wie bei verify-mermaid.mjs.
+      - name: Validator-Abhängigkeiten außerhalb des Repos installieren
+        run: |
+          mkdir -p "$RUNNER_TEMP/oa-validate"
+          npm install --ignore-scripts --prefix "$RUNNER_TEMP/oa-validate" ajv@^8 js-yaml@^4
+      - name: Workflow-DSL validieren (Schema, Wildcard-Sicherheitsanalyse, Zustandsmaschine)
+        env:
+          NODE_PATH: ${{ runner.temp }}/oa-validate/node_modules
+        run: node scripts/validate-workflow.mjs
+      - name: AGENTS.md-Tabellen gegen die DSL prüfen (generiert == eingecheckt)
+        env:
+          NODE_PATH: ${{ runner.temp }}/oa-validate/node_modules
+        run: node scripts/render-agents.mjs --check

@@ -1,0 +1,240 @@
+# Rollen, Tool-Allowlists, Forbidden-Patterns und Budgets — maschinenlesbare Fassung von
+# AGENTS.md D1/D2 und der Rollen-Tabelle. Normative Quelle für Struktur (Spec § 6, Hybrid):
+# die Rollen-Tabelle in AGENTS.md wird hieraus generiert (scripts/render-agents.mjs),
+# die Begründungsprosa der Direktiven bleibt dort Handtext.
+#
+# Geprüft von scripts/validate-workflow.mjs (Schema + Wildcard-Sicherheitsanalyse).
+# Tool-Einträge stehen in der Freigabe-Schreibweise von Claude Code: `Read` bzw. `Bash(<befehlsform>)`.
+version: 1
+source: "AGENTS.md — Rollen-Tabelle, D1, D2"
+
+# Formen, die in KEINEM Rollen-Set stehen dürfen. Geprüft wird nicht nur der zeichengenaue
+# Treffer, sondern die Subsumption in beide Richtungen (Tokenfolge bis zum ersten `*`):
+# Eine Freigabe darf weder unter ein Verbot fallen (`Bash(git push origin HEAD:main)` unter
+# `Bash(git push *)`) noch ein Verbot mit abdecken (`Bash(gh pr *)` deckt `gh pr merge` ab).
+#
+# `match` steuert, welche Richtung gilt:
+#   subsumption (Default) — beide Richtungen; `except` nennt die ausdrücklich erlaubten Formen
+#                           unterhalb des Verbots.
+#   blanket               — das Verbot meint die Freigabeform selbst (`Bash(git *)`), nicht jeden
+#                           `git`-Befehl: geprüft wird nur, ob eine Freigabe sie mit abdeckt.
+#   konvention            — durch die Freigabeform nicht ausschließbar, weil ein breiteres,
+#                           erlaubtes Pattern sie mit abdeckt (`Bash(gh pr comment *)` deckt
+#                           `--edit-last` mit ab). Geprüft wird nur, dass die Form nicht
+#                           ausdrücklich als Eintrag auftaucht; den Riegel setzt die Regel
+#                           (AGENTS.md D4, „Append-only ist das Pattern … allerdings nicht").
+forbidden_tools:
+  - pattern: "Bash(git *)"
+    directive: D2
+    match: blanket
+    reason: "Kein blankes `Bash(git *)` — das erlaubt genau das `git push origin HEAD:main`, vor dem D1 warnt."
+  - pattern: "Bash(git push *)"
+    directive: D2
+    except:
+      - "Bash(git push -u origin HEAD)"
+    reason: "Der Push-Guard ist die exakte Form `Bash(git push -u origin HEAD)`; jede andere Push-Variante muss an einer Freigabe hängen bleiben."
+  - pattern: "Bash(gh pr merge *)"
+    directive: D1
+    reason: "Merge nur durch Martin — Agenten mergen nie."
+  - pattern: "Bash(gh pr edit *)"
+    directive: D2
+    reason: "Kein `gh pr edit` — in keinem der drei Sets: `--body` ersetzt den PR-Body vollständig und kippt dabei `Closes #N` oder die Owner-Vermerke."
+  - pattern: "Bash(gh issue edit *)"
+    directive: D2
+    except:
+      - "Bash(gh issue edit --add-label *)"
+      - "Bash(gh issue edit --remove-label *)"
+      - "Bash(gh issue edit --body *)"
+    reason: "Kein blankes `Bash(gh issue edit *)` — freigegeben sind nur die beiden Label-Formen plus die D8-Zusatzfreigabe `--body` (Lead, genau ein Run); jede andere Form ersetzt Body oder Titel vollständig."
+  - pattern: "Bash(gh issue edit --body-file *)"
+    directive: D2
+    reason: "Nur die Inline-Form `--body`: `--body-file`/`-F` deckt die D8-Zusatzfreigabe nicht ab, und um eine Body-Datei zu schreiben bräuchte der Lead `Write` (steht nicht im Lead-Set)."
+  - pattern: "Bash(gh issue edit -F *)"
+    directive: D2
+    reason: "Kurzform von `--body-file` — dieselbe Begründung, eigener Eintrag, weil die Subsumption auf Tokenfolgen arbeitet."
+  - pattern: "Bash(gh api *)"
+    directive: D1
+    reason: "Universal-Schreibrecht auf die GitHub-API — damit ginge auch der Merge, den D1 Agenten verbietet."
+  - pattern: "Bash(NODE_PATH=* node scripts/verify-mermaid.mjs *)"
+    directive: D2
+    reason: "Warum nicht inline `NODE_PATH=… node scripts/verify-mermaid.mjs`: Der `*` in Wert-Position entscheidet mit, welcher Code im Lauf geladen wird. Zuweisungen gehören in die Umgebung."
+  - pattern: "Bash(git -C * status)"
+    directive: D2
+    reason: "Weder `git -C` noch `cd`: Der `*` matcht beliebigen Text und hebelt den Push-Guard aus (Blocker B1 aus PR #27)."
+  - pattern: "Bash(gh pr comment --edit-last *)"
+    directive: D4
+    match: konvention
+    reason: "Pro Beleg ein neuer Kommentar: `--edit-last` ersetzt den letzten eigenen Kommentar in place, der Beleg wäre dann doch überschreibbar. `Bash(gh pr comment *)` deckt die Form mit ab — ausschließen kann sie nur die Konvention, nicht die Freigabeform."
+  - pattern: "Bash(gh pr comment --delete-last *)"
+    directive: D4
+    match: konvention
+    reason: "`--delete-last --yes` löscht den Beleg ohne Rückfrage (auch headless). Wie `--edit-last` durch die Freigabeform nicht ausschließbar — die Konvention sieht beide nicht vor."
+
+roles:
+  # Reihenfolge = Reihenfolge der Rollen-Tabelle in AGENTS.md.
+  - id: lead
+    name: "Orchestrator/Lead"
+    realization: "Hermes default-Profil (Telegram)"
+    scope: "Nimmt Aufträge, legt Issues an, delegiert, fasst zusammen. Schreibt KEINEN Code."
+    d2_set: true
+    delegated: true
+    merge_allowed: false
+    workdir: repo-root
+    budget:
+      # Das Hermes-Profil selbst läuft im Telegram-Thread; `--max-turns` betrifft die
+      # Claude-Code-Runs des Leads (D7-Prüfung, D7-Vollendung, Cleanup).
+      max_turns: 15
+      source: "In der Zuständigkeiten-Tabelle von docs/workflow.md steht für Lead-Schritte keine Zahl — hier in der DSL festgelegt, die laut docs/workflow.md („Struktur-Quelle: die Workflow-DSL\") für Budgets die normative Quelle ist: Lead-Runs sind Kurzläufe (Delegation, Labels, Draft→Ready, D7-Prüfung, Cleanup), Budget wie der Reviewer-Run."
+    allowed_tools:
+      - "Read"
+      - "Glob"
+      - "Grep"
+      - "Bash(gh issue create *)"
+      - "Bash(gh issue edit --add-label *)"
+      - "Bash(gh issue edit --remove-label *)"
+      - "Bash(gh issue view *)"
+      - "Bash(gh pr view *)"
+      - "Bash(gh pr comment *)"
+      - "Bash(gh pr ready *)"
+      - "Bash(gh run list *)"
+      - "Bash(gh run view *)"
+      - "Bash(gh label list *)"
+      - "Bash(git status *)"
+      - "Bash(git diff *)"
+      - "Bash(git log *)"
+      - "Bash(git worktree *)"
+      - "Bash(git checkout main)"
+      - "Bash(git pull)"
+      - "Bash(git branch -D *)"
+    must_not_include:
+      - "Write"
+      - "Edit"
+      - "Bash(gh pr merge *)"
+    forbidden_tools:
+      - pattern: "Bash(gh issue edit --body *)"
+        directive: D2
+        reason: "Nur als Zusatzfreigabe für den D8-Basiswechsel-Run, siehe conditional_tools; im Standard-Lead-Set steht der Eintrag nicht."
+    conditional_tools:
+      - id: pruef_run
+        directive: D7
+        reason: "Lead-Run arbeitet im Worktree-Verzeichnis (D7-Prüfung, D8-Vorprüfung): Am Worktree liest der Prüf-Run ausschließlich. Die `gh …`-Einträge des Lead-Sets bleiben vollständig, auch die schreibenden — sie arbeiten auf GitHub und fassen den Worktree nicht an."
+        restrict_git_tools_to:
+          - "Bash(git status *)"
+          - "Bash(git diff *)"
+          - "Bash(git log *)"
+      - id: d8_basiswechsel
+        directive: D8
+        reason: "Einzige Ausnahme — die D8-Basisänderung: Nur der Lead stellt die Basis in den Agent-Hinweisen auf `origin/main` um; Zusatzfreigabe für genau diesen Run, nur die Inline-Form `--body`."
+        grants:
+          - "Bash(gh issue edit --body *)"
+      - id: d7_vollendung
+        directive: D7
+        reason: "Vollständig: Der Lead committet den Worktree-Stand unverändert und vollendet (Push, Draft-PR, Label). Die dafür nötigen Einträge nimmt er aus dem Coder-Set."
+        grants:
+          - "Bash(git add *)"
+          - "Bash(git commit *)"
+          - "Bash(git push -u origin HEAD)"
+          - "Bash(gh pr create *)"
+          - "Bash(node scripts/verify-mermaid.mjs *)"
+
+  - id: researcher
+    name: "Researcher"
+    realization: "Hermes @research / @deep-research"
+    scope: "Recherche, Analyse, Spec-Vorarbeit → `agentic-workflow/` bzw. `docs/`"
+    # Kein Claude-Code-Run: Das Hermes-Profil bekommt kein `--max-turns` und kein D2-Set.
+    d2_set: false
+    delegated: false
+    merge_allowed: false
+    workdir: "n/a"
+
+  - id: coder
+    name: "Coder"
+    realization: "Claude Code (headless, 1 Worktree pro Issue)"
+    scope: "Implementiert Issue in eigenem Worktree, Branch, Commits, Draft-PR"
+    d2_set: true
+    delegated: true
+    merge_allowed: false
+    workdir: worktree
+    budget:
+      max_turns: 30
+      source: "docs/workflow.md, Zuständigkeiten pro Schritt — `claude -p \"<issue-brief>\" --max-turns 30`"
+    allowed_tools:
+      - "Read"
+      - "Write"
+      - "Edit"
+      - "Glob"
+      - "Grep"
+      - "Bash(git status *)"
+      - "Bash(git diff *)"
+      - "Bash(git log *)"
+      - "Bash(git add *)"
+      - "Bash(git commit *)"
+      - "Bash(git push -u origin HEAD)"
+      - "Bash(gh issue view *)"
+      - "Bash(gh issue edit --add-label *)"
+      - "Bash(gh issue edit --remove-label *)"
+      - "Bash(gh label list *)"
+      - "Bash(gh pr create *)"
+      - "Bash(gh pr view *)"
+      - "Bash(gh pr comment *)"
+      - "Bash(gh run list *)"
+      - "Bash(gh run view *)"
+      - "Bash(node scripts/verify-mermaid.mjs *)"
+    must_not_include:
+      - "Bash(gh pr merge *)"
+      - "Bash(gh pr edit *)"
+    conditional_tools:
+      - id: sync_run
+        directive: D8
+        reason: "`main` holen: Die Sync-Einträge stehen nicht im Standard-Coder-Set; der Lead gibt sie für genau diesen Run in exakt dieser Form zusätzlich frei."
+        grants:
+          - "Bash(git fetch origin)"
+          - "Bash(git merge origin/main)"
+        denies:
+          - "Bash(git merge --abort)"
+
+  - id: reviewer
+    name: "Reviewer"
+    realization: "Claude Code, 2. Run mit sauberem Kontext"
+    scope: "Reviewt PR gegen AGENTS.md + Akzeptanzkriterien, Befunde als PR-Kommentare"
+    d2_set: true
+    delegated: true
+    merge_allowed: false
+    workdir: worktree
+    budget:
+      max_turns: 15
+      source: "docs/workflow.md, Zuständigkeiten pro Schritt — Review, `--max-turns 15`"
+    allowed_tools:
+      - "Read"
+      - "Glob"
+      - "Grep"
+      - "Bash(git diff *)"
+      - "Bash(git log *)"
+      - "Bash(gh issue view *)"
+      - "Bash(gh pr view *)"
+      - "Bash(gh pr diff *)"
+      - "Bash(gh pr comment *)"
+    must_not_include:
+      - "Write"
+      - "Edit"
+      - "Bash(node scripts/verify-mermaid.mjs *)"
+      - "Bash(gh pr merge *)"
+    forbidden_tools:
+      - pattern: "Bash(node scripts/verify-mermaid.mjs *)"
+        directive: D2
+        reason: "Kein Eintrag im Reviewer-Set — der Reviewer prüft den Beleg-Kommentar des Coders, er führt das Skript nicht selbst aus."
+
+  - id: tester
+    name: "Tester"
+    realization: "Claude Code / oa-playwright-cli (nach Bedarf)"
+    scope: "E2E/QA-Aufgaben in eigenem Worktree"
+    # Bekannte Lücke: AGENTS.md D2 nennt nur drei Tool-Sets (Coder, Reviewer, Lead) — für
+    # Tester-Runs gibt es keines. Deshalb `d2_set: false`; das Budget gilt trotzdem, weil D2
+    # jede Delegation an ein `--max-turns` bindet.
+    d2_set: false
+    delegated: true
+    merge_allowed: false
+    workdir: worktree
+    budget:
+      max_turns: 30
+      source: "In der Zuständigkeiten-Tabelle von docs/workflow.md kommt die Rolle nicht vor — hier in der DSL festgelegt (siehe Lead): E2E-Läufe entsprechen im Umfang einem Coder-Run."
