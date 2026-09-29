@@ -73,7 +73,7 @@ Auftrag (Martin: Telegram DM/Thread ODER direkt als Issue)
 | Review | Reviewer | separater Claude-Code-Run auf dem PR-Diff, `--max-turns 15`, Tool-Set siehe AGENTS.md D2 |
 | Draft → Ready | Lead | `gh pr ready <n>` nach grünem CI + abgeschlossenem Review; Tool-Set: `Bash(gh pr ready *)`, `Bash(gh pr view *)`, `Bash(gh run list *)`, `Bash(gh run view *)` (vollständiges Lead-Set: AGENTS.md D2) |
 | Merge | **Martin** | GitHub UI oder `gh pr merge` |
-| Worktree entfernen | **Lead** | nach Merge, vom Repo-Root, Befehle einzeln (AGENTS.md) — nicht der Coder, dessen Run mit dem PR endet |
+| Cleanup | **Lead** | nach Merge, vom Repo-Root, im Zuge des Merge-Replys (nicht als isolierter Run — Freigabe-Timeout): `git checkout main`, `git pull`, `git worktree remove worktrees/<n>-<slug>`, `git worktree prune`, `git branch -D <branch>` (AGENTS.md, Worktree-Konvention). Remote-Branch: bei aktiver Repo-Einstellung `delete_branch_on_merge` automatisch gelöscht — Einstellung ist ein einmaliger menschlicher Admin-Schritt (Stand und Begründung: [`validate-setup.md`](validate-setup.md), „One-time Setup (GitHub-Repo): `delete_branch_on_merge`"); ist sie aus, löscht Martin den Remote-Branch im GitHub-UI |
 
 ## Review-Schleife
 

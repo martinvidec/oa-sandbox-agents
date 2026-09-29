@@ -37,6 +37,20 @@ npm install ajv js-yaml
 
 Voraussetzung: Node.js ≥ 18.
 
+## One-time Setup (GitHub-Repo): `delete_branch_on_merge`
+
+> **Manueller Schritt eines Menschen (Martin), einmal pro Rechner — kein Agenten-Schritt.**
+> Settings → General → Pull Requests → „Automatically delete head branches" aktivieren.
+> Aktiver Stand: **`false`** (via `gh api repos/… --jq .delete_branch_on_merge` geprüft, Issue #50).
+> Ein PATCH mit Agenten-Token endet in `404` — das Repo-Admin-Recht hat kein Agent; auch der Lead
+> aktiviert die Einstellung nicht.
+
+Ist sie aktiv, wird der Remote-Branch beim Merge automatisch gelöscht (AGENTS.md,
+Worktree-Konvention, „**Lokal aufgeräumt heißt: kein Worktree, kein Branch**"); ist sie aus,
+löscht Martin den Remote-Branch im GitHub-UI. Der lokale Teil des Cleanup hängt nicht daran —
+`git branch -D <branch>` nach dem Squash-Merge ist unabhängig davon nötig und sicher, weil vorher
+`gh pr view <n> --json state,mergedAt` den Merge belegt.
+
 `node_modules/`, `package.json` und `package-lock.json` im Repo-Root sind **nicht gitignored**
 (`.gitignore` listet nur `worktrees/`), weshalb das `git add -A` eines Sync- oder WIP-Commits die
 ganze Installation einchecken und pushen würde (AGENTS.md D2, „Warum Playwright nicht im Repo-Root
