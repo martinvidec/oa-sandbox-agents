@@ -1,0 +1,364 @@
+# Direktiven D1–D8 als prüfbare Invarianten — maschinenlesbare Fassung der Direktiven aus
+# AGENTS.md (Spec: docs/specs/dsl-workflow.md § 2, dritte Schicht).
+# Geprüft von scripts/validate-workflow.mjs (Schema + Regel-Konsistenz, Ebene 2d).
+#
+# Jede Regel nennt vier Dinge und nichts davon ist optional:
+#   on      — das Ereignis, bei dem die Regel greift (ID aus `triggers`)
+#   assert  — die Bedingung, ausschließlich über benannte Fakten aus `facts` (Spec § 2.3:
+#             nur beobachtbare Fakten, keine Selbstauskunft des Agenten)
+#   check   — woher der Fakt kommt (ID aus `check_sources`)
+#   source  — die Belegstelle: `agents_md` nennt die **fett gesetzte Überschrift wörtlich**
+#             (Querverweis-Konvention von AGENTS.md), `doc` eine andere Stelle im Repo.
+#             Genau eines von beidem. Zitiert wird OHNE den Satzpunkt („Eskalation", nicht
+#             „Eskalation:"); der Validator löst `agents_md` gegen die Überschriften von
+#             AGENTS.md auf — ein toter Verweis ist ein Fehler.
+#
+# Was sich nicht an beobachtbaren Fakten festmachen lässt, wird KEINE Regel mit weichem
+# `assert`, sondern steht unten als `documented_conventions` mit Begründung. Eine Regel, die
+# nur so tut, als prüfe sie etwas, ist schlimmer als eine ehrlich als Prosa geführte Konvention.
+#
+# Bewusst KEINE Regel an D8: Review-Befunde an einem offenen PR (AGENTS.md D8,
+# „Abgrenzung zur Review-Schleife"). Sie gehören in die Review-Schleife von
+# docs/workflow.md, nicht zu D8 — der Validator meldet jede D8-Regel, die am Trigger
+# `review_finding` hängt (Befund `d8-review-schleife`).
+version: 1
+source: "AGENTS.md — Direktiven D1–D8; docs/specs/dsl-workflow.md § 2"
+
+# Vokabular für `check` und `triggers.observable_via`. `infrastructure` bindet D6: Es gibt
+# nur `github` und `local` — eine Quelle, die etwas anderes verlangte, wäre eigene
+# Infrastruktur (AGENTS.md D6). Der Validator lässt nichts anderes zu.
+check_sources:
+  - id: gh_api
+    description: "Zustand von Issue und PR über die GitHub-API, gelesen mit `gh`."
+    infrastructure: github
+  - id: git_state
+    description: "Zustand von Repo bzw. Worktree, gelesen mit `git`."
+    infrastructure: local
+  - id: process_exit
+    description: "Exit-Code eines Skripts aus `scripts/` — 0 heißt: die Bedingung hält."
+    infrastructure: local
+  - id: ci_run
+    description: "Ergebnis eines Jobs aus `.github/workflows/ci.yml`."
+    infrastructure: github
+
+# Ereignisse, an denen Regeln hängen. `pipeline: true` heißt: Das Ereignis gehört zu einem
+# Schritt aus workflow/pipeline.yaml — solche Regeln müssen dort auch referenziert sein,
+# sonst prüft sie niemand an der Stelle, an der sie greift (Warnung des Validators).
+triggers:
+  - id: workflow_change
+    description: "Ein PR ändert `workflow/`, `AGENTS.md` oder `scripts/`."
+    observable_via: ci_run
+    pipeline: false
+  - id: worktree_create
+    description: "Ein Worktree für ein Issue wird angelegt."
+    observable_via: git_state
+    pipeline: true
+  - id: run_start
+    description: "Ein Coder-, Fix-, Sync- oder Reviewer-Run startet in einem Worktree."
+    observable_via: git_state
+    pipeline: true
+  - id: run_end
+    description: "Ein Run endet regulär."
+    observable_via: git_state
+    pipeline: true
+  # Bewusst KEIN Trigger `run_aborted`: Der Abbruch selbst ist beobachtbar, die Eskalation aber
+  # hängt an der Versuchszählung, und die ist es nicht (Review-Befund M2 zu PR #49). Ein Trigger,
+  # an dem keine prüfbare Regel hängen kann, täuschte Umfang vor; die Eskalation steht unten als
+  # `D7_escalate_after_second_abort` in `documented_conventions`.
+  - id: pr_opened
+    description: "Ein Draft-PR wird geöffnet."
+    observable_via: gh_api
+    pipeline: true
+  - id: review_label_set
+    description: "Das Label `agent:review` wird gesetzt."
+    observable_via: gh_api
+    pipeline: true
+  - id: review_finding
+    description: "Der Reviewer-Run hat Befunde am offenen PR hinterlassen."
+    observable_via: gh_api
+    pipeline: true
+  - id: predecessor_merged
+    description: "Der Vorgänger-PR #X einer D8-Kette ist gemergt."
+    observable_via: gh_api
+    pipeline: true
+  - id: pr_merged
+    description: "Ein PR ist gemergt."
+    observable_via: gh_api
+    pipeline: true
+
+# Beobachtbare Fakten. `command` nennt den Befehl, mit dem sich der Fakt ablesen lässt —
+# ohne ihn wäre „beobachtbar" eine Behauptung. Genannt wird nur, was an der Stelle der
+# Beobachtung auch ausführbar ist (Review-Befund N4 zu PR #49): entweder eine Freigabeform
+# aus den Tool-Sets von AGENTS.md D2 (`git status --long`, `git log …`, `gh issue view`,
+# `gh pr view`, `gh run view`) oder der CI-Job `workflow-dsl`, der die Skripte aus `scripts/`
+# ausführt. `node scripts/validate-workflow.mjs` steht in keinem Tool-Set — die vier
+# `process_exit`-Fakten nennen deshalb den CI-Job als Ort der Beobachtung, nicht einen Befehl
+# innerhalb eines Runs. Ein `command`, das weder ein Tool-Set noch ein CI-Job ausführen kann,
+# wäre wieder eine Behauptung (`git merge-base --is-ancestor` war genau das und ist durch die
+# `git log`-Form ersetzt, die in Coder- und Lead-Set steht).
+# Die IDs dürfen nicht mit denen aus
+# workflow/states.yaml kollidieren; beide Listen bilden zusammen das Fakten-Vokabular, das
+# workflow/pipeline.yaml in `fact_check` referenziert.
+facts:
+  - id: dsl_validation_exit_zero
+    description: "Der CI-Job `workflow-dsl` ist grün — Validator und Tabellen-Check melden keinen Fehler."
+    check: ci_run
+    command: "gh run view <id> --json jobs — Job `workflow-dsl`, conclusion: success"
+  - id: pr_merge_actor_role
+    description: "Rolle des Accounts, der den PR gemergt hat: `human` (Martin) oder eine Rolle aus workflow/roles.yaml."
+    check: gh_api
+    command: "gh pr view <n> --json state,mergedAt,mergedBy"
+  - id: no_merge_tool_in_any_set
+    description: "Kein Rollen-Set führt eine `gh pr merge`-Form, und keine Rolle hat `merge_allowed: true`."
+    check: process_exit
+    command: "CI-Job `workflow-dsl` (`node scripts/validate-workflow.mjs`) — die Befunde `d1-merge` und `d1-merge-tool` bleiben aus"
+  - id: delegated_roles_have_budget
+    description: "Jede delegierte Rolle trägt ein `budget.max_turns` mit belegter Quelle."
+    check: process_exit
+    command: "CI-Job `workflow-dsl` (`node scripts/validate-workflow.mjs`) — der Befund `fehlendes-budget` bleibt aus"
+  - id: tool_allowlist_analysis_clean
+    description: "Jede Freigabeform besteht die Wildcard- und Subsumptionsanalyse (Push-Guard, Injektionsflags, Sammelpattern)."
+    check: process_exit
+    command: "CI-Job `workflow-dsl` (`node scripts/validate-workflow.mjs`) — keine Befunde aus Ebene 2a"
+  - id: check_sources_only_github_and_local
+    description: "Jede Quelle aus `check_sources` führt `infrastructure: github` oder `local` — keine dritte Infrastruktur."
+    check: process_exit
+    command: "CI-Job `workflow-dsl` (`node scripts/validate-workflow.mjs`) — der Befund `fremde-infrastruktur` bleibt aus"
+  - id: pr_closes_exactly_one_issue
+    description: "Der PR-Body nennt genau ein `Closes #N`."
+    check: gh_api
+    command: "gh pr view <n> --json body"
+  - id: pr_is_draft_at_review
+    description: "Der PR ist offen und als Draft angelegt, wenn `agent:review` gesetzt wird."
+    check: gh_api
+    command: "gh pr view <n> --json isDraft,state"
+  - id: ci_green_evidence_comment
+    description: "Am PR steht ein Kommentar, der den grünen CI-Lauf mit Run-ID und `conclusion: success` belegt."
+    check: gh_api
+    command: "gh pr view <n> --json comments"
+  - id: worktree_clean_after_run
+    description: "Im Worktree liegen nach dem Run keine uncommitteten und keine untracked Änderungen."
+    check: git_state
+    command: "git status --long"
+  - id: head_pushed_to_origin
+    description: "Der Stand ist gepusht: `HEAD` liegt auch auf `origin/<branch>`, kein Commit steht nur lokal."
+    check: git_state
+    command: "git status --long — „Your branch is up to date with 'origin/<branch>'.\", nicht „ahead of\""
+  - id: worktree_merge_in_progress
+    description: "Im Worktree läuft ein Merge — `MERGE_HEAD` ist gesetzt, ein früherer Sync-Run ist mittendrin abgebrochen."
+    check: git_state
+    command: "git status --long — „All conflicts fixed but you are still merging.\""
+  - id: review_comment_present
+    description: "Der Reviewer-Run hat am PR einen Kommentar hinterlassen — auch ohne Befunde („Review ok, keine Befunde\"); Schweigen zählt nicht als Freigabe."
+    check: gh_api
+    command: "gh pr view <n> --json comments"
+  - id: branch_contains_declared_base
+    description: "Der Branch enthält den Stand seiner angegebenen Basis: `origin/main` — bei einem D8-Issue `origin/<pr-branch>` aus den Agent-Hinweisen."
+    check: git_state
+    command: "git log HEAD..<basis> --oneline — leere Ausgabe heißt: `<basis>` ist in `HEAD` enthalten"
+  - id: dependent_branch_contains_main
+    description: "Der Branch des abhängigen Issues enthält `origin/main` — der Sync nach dem Merge des Vorgängers ist gelaufen."
+    check: git_state
+    command: "git log HEAD..origin/main --oneline — leere Ausgabe heißt: der Sync ist gelaufen"
+
+rules:
+  # Erste Regel: Die DSL erklärt ihre eigene Prüfpflicht. Ohne sie wäre jede weitere Regel
+  # eine Behauptung, die niemand nachhält.
+  - id: DSL_self_validation
+    on: workflow_change
+    assert:
+      fact: dsl_validation_exit_zero
+      operator: is_true
+    check: ci_run
+    remedy: "Befunde beheben und neu pushen. Kein `agent:review`, solange der Job rot ist — der CI-Beleg ist zugleich der DSL-Beleg."
+    source:
+      # Keine Direktive trägt diese Regel: Sie gilt der DSL selbst, nicht dem Verhalten der
+      # Agenten. Ein erfundener Direktiven-Verweis wäre an normativer Stelle schlimmer als
+      # der ehrliche Verweis auf die Doku (dieselbe Abwägung wie in workflow/states.yaml).
+      doc: "docs/validate-setup.md — Einsatz in der Pipeline"
+
+  - id: D1_merge_by_human
+    directive: D1
+    on: pr_merged
+    assert:
+      fact: pr_merge_actor_role
+      operator: equals
+      value: human
+    check: gh_api
+    remedy: "Ein Agenten-Merge lässt sich nicht zurücknehmen: Workflow-Bug-Issue anlegen, `needs-human` am betroffenen Issue setzen, Rückfrage an Martin."
+    source:
+      agents_md: "D1 — Merge nur durch Martin"
+
+  - id: D1_no_merge_tool
+    directive: D1
+    on: workflow_change
+    assert:
+      fact: no_merge_tool_in_any_set
+      operator: is_true
+    check: process_exit
+    remedy: "`gh pr merge` aus dem Set entfernen bzw. `merge_allowed: false` setzen — der Merge gehört Martin, nicht einem Tool-Set."
+    source:
+      agents_md: "D1 — Merge nur durch Martin"
+
+  - id: D2_delegation_budget
+    directive: D2
+    on: workflow_change
+    assert:
+      fact: delegated_roles_have_budget
+      operator: is_true
+    check: process_exit
+    remedy: "`budget.max_turns` samt Quelle an der Rolle nachtragen — eine Delegation ohne `--max-turns` gibt es nicht."
+    source:
+      agents_md: "D2 — Budget-Guards"
+
+  - id: D2_allowlist_form
+    directive: D2
+    on: workflow_change
+    assert:
+      fact: tool_allowlist_analysis_clean
+      operator: is_true
+    check: process_exit
+    remedy: "Freigabeform auf die exakte Form zurückschneiden (Push-Guard `git push -u origin HEAD`, kein `-C`, kein Sammelpattern) — oder den Eintrag streichen."
+    source:
+      agents_md: "Kein blankes `Bash(git *)`"
+
+  - id: D3_one_issue_per_pr
+    directive: D3
+    on: pr_opened
+    assert:
+      fact: pr_closes_exactly_one_issue
+      operator: is_true
+    check: gh_api
+    remedy: "Scope-Ausweitung bekommt ein eigenes Issue und einen eigenen PR; der PR-Body nennt genau ein `Closes #N`."
+    source:
+      agents_md: "D3 — Kleine PRs"
+
+  - id: D4_review_label_needs_evidence
+    directive: D4
+    on: review_label_set
+    assert:
+      all_of:
+        - fact: pr_is_draft_at_review
+          operator: is_true
+        - fact: ci_green_evidence_comment
+          operator: is_true
+    check: gh_api
+    remedy: "CI-Beleg als **neuen** PR-Kommentar nachreichen (`gh pr comment <n> --body \"CI grün: Run <id>, conclusion success\"`), den PR-Body nicht anfassen; bis dahin `agent:review` zurücknehmen."
+    source:
+      agents_md: "Der Beleg folgt als PR-Kommentar"
+
+  # Sauber allein genügt nicht: Ein Worktree, in dem alles committet, aber nichts gepusht ist,
+  # ist sauber — und genau der Zustand „nur lokal", den D5 verbietet (Review-Befund N2 zu
+  # PR #49). Beide Fakten kommen aus `git status --long`.
+  - id: D5_nothing_stays_local
+    directive: D5
+    on: run_end
+    assert:
+      all_of:
+        - fact: worktree_clean_after_run
+          operator: is_true
+        - fact: head_pushed_to_origin
+          operator: is_true
+    check: git_state
+    remedy: "Ergebnis committen UND pushen (`git push -u origin HEAD`; Specs und Protokolle nach `docs/`); nichts bleibt nur im Worktree und nichts nur im lokalen Branch liegen."
+    source:
+      agents_md: "D5 — Doku bleibt im Repo"
+
+  - id: D6_checks_stay_on_github_and_local
+    directive: D6
+    on: workflow_change
+    assert:
+      fact: check_sources_only_github_and_local
+      operator: is_true
+    check: process_exit
+    remedy: "Prüfung auf `gh`, `git`, ein Skript aus `scripts/` oder einen CI-Job zurückführen — oder sie streichen. Eigene Dienste gibt es nicht."
+    source:
+      agents_md: "D6 — Keine eigene Infrastruktur"
+
+  - id: D7_no_run_in_merging_worktree
+    directive: D7
+    on: run_start
+    assert:
+      fact: worktree_merge_in_progress
+      operator: is_false
+    check: git_state
+    remedy: "Keinen Run starten, nichts committen (ein `git add -A` checkte Konfliktmarker ein): `needs-human` setzen und den Zustand in der Rückfrage an Martin benennen."
+    source:
+      agents_md: "D8-Basis, Vorgänger #X inzwischen gemergt"
+
+  - id: D8_worktree_base_is_pr_branch
+    directive: D8
+    on: worktree_create
+    assert:
+      fact: branch_contains_declared_base
+      operator: is_true
+    check: git_state
+    remedy: "Worktree von `origin/<pr-branch>` neu anlegen (die Basis steht in den Agent-Hinweisen des Issues); den Vorgänger-Stand nicht nachkopieren — genau daran scheiterte #11."
+    source:
+      agents_md: "D8 — Abhängige Issues"
+
+  - id: D8_sync_before_compare
+    directive: D8
+    on: predecessor_merged
+    assert:
+      fact: dependent_branch_contains_main
+      operator: is_true
+    check: git_state
+    remedy: "Sync-Run im selben Worktree delegieren (`git fetch origin`, `git merge origin/main`, `git push -u origin HEAD`); vorher läuft kein Vergleich und keine inhaltliche Nachbesserung."
+    source:
+      agents_md: "`main` holen"
+
+# Punkte der Direktiven, die sich NICHT an beobachtbaren Fakten festmachen lassen. Sie stehen
+# hier mit Begründung statt als Regel mit weichem `assert` — der Validator verlangt für die
+# Abdeckung von D1–D8 eine Regel ODER einen Eintrag hier, aber nicht das Vortäuschen einer
+# Prüfung. `why_not_checkable` ist Pflichtfeld: Ohne Begründung wäre der Eintrag eine
+# bequeme Ausrede statt einer Feststellung.
+documented_conventions:
+  - id: D2_status_long_not_short
+    directive: D2
+    convention: "`git status --long` statt `--short`/`--porcelain` — nur `--long` zeigt den laufenden Merge, auf den D7 und D8 prüfen."
+    why_not_checkable: "Die Ausgabeform eines Befehls innerhalb eines headless-Runs hinterlässt kein Artefakt in Repo oder GitHub. Sichtbar wäre sie erst im Session-Log — das ist Ebene 3 (Runtime-Replay, Spec § 5.5) und gehört nicht in dieses MVP."
+    source:
+      agents_md: "`--long`, nicht `--short`/`--porcelain`"
+
+  - id: D2_single_commands
+    directive: D2
+    convention: "In headless-Runs werden Shell-Befehle einzeln abgesetzt; verkettete Kommandos (`a; b`) lösen eine eigene Freigabe aus."
+    why_not_checkable: "Betrifft die Aufrufe innerhalb eines Runs, nicht sein Ergebnis. Die Freigabe-PATTERN prüft `D2_allowlist_form` (Befund `befehlskette`), den tatsächlichen Aufruf erst Ebene 3."
+    source:
+      doc: "AGENTS.md — D2, letzter Aufzählungspunkt („In headless-Runs Shell-Befehle einzeln absetzen\"); der Punkt trägt keine fett gesetzte Überschrift, deshalb kein `agents_md`-Verweis"
+
+  - id: D2_verify_out_outside_worktree
+    directive: D2
+    convention: "`--out` von `verify-mermaid.mjs` zeigt nie in den Worktree; Default ist `<tmpdir>/verify-mermaid`."
+    why_not_checkable: "Ein Ziel außerhalb des Repos hinterlässt dort definitionsgemäß nichts Beobachtbares. Nur der Fehlgriff fiele auf — als eingecheckte Screenshots, und die fängt `D5_nothing_stays_local` erst, wenn sie wirklich committet wurden."
+    source:
+      agents_md: "`--out` zeigt nie in den Worktree"
+
+  - id: D7_escalate_after_second_abort
+    directive: D7
+    convention: "Nach dem Abbruch des Fix-Runs — bzw. des zweiten Sync-Versuchs — wird kein weiterer Run delegiert, sondern `needs-human` gesetzt."
+    why_not_checkable: "Die Konvention hängt an einer Zählung („Zählung — höchstens zwei Sync-Versuche pro Sync-Anlass\"), und die ist nicht beobachtbar: `gh issue view <n> --json labels` zeigt, OB `needs-human` steht, nicht, der wievielte Abbruch gerade vorliegt. Als Regel am Ereignis „Run bricht ab\" formuliert war sie falsch verdrahtet und ist deshalb hier gelandet (Review-Befund M2 zu PR #49): Das Ereignis feuert bei JEDEM Abbruch, nach dem ersten verlangt D7 aber gerade keinen `needs-human`, sondern einen Fix-Run bzw. genau einen erneuten Sync-Run (D8, „Sync-Run bricht ab, nicht mitten im Merge\") — die Regel hätte den korrekten Ablauf als Verstoß gemeldet. Die Zählung liegt prozessual beim Lead und wird erst mit dem Runtime-Replay über die Run-Historie prüfbar (Ebene 3, Spec § 5.5)."
+    source:
+      agents_md: "Eskalation"
+
+  - id: D3_no_scope_creep
+    directive: D3
+    convention: "Keine Scope-Ausweitung ohne neues Issue — ein PR setzt genau das um, was die Akzeptanzkriterien seines Issues verlangen."
+    why_not_checkable: "Ob ein Diff über den Scope hinausgeht, ist eine inhaltliche Beurteilung gegen den Issue-Text. Maschinell prüfbar ist nur die Zählung (`D3_one_issue_per_pr`: genau ein `Closes #N`); den Rest prüft der Reviewer-Run."
+    source:
+      agents_md: "D3 — Kleine PRs"
+
+  - id: D4_pr_body_not_maintained
+    directive: D4
+    convention: "Der PR-Body ist der Stand bei `gh pr create` und wird nicht nachgepflegt; Belege kommen als neue PR-Kommentare."
+    why_not_checkable: "Eine Body-Änderung wäre nur an der Bearbeitungshistorie erkennbar. `gh pr view --json body` liefert allein den aktuellen Stand; an die Historie käme man über `gh api` — und `Bash(gh api *)` ist als Universal-Schreibrecht verboten (D1). Den Riegel setzt deshalb das Tool-Set: `gh pr edit` steht in keinem der drei Sets."
+    source:
+      agents_md: "Der PR-Body ist der Stand bei `gh pr create` und wird nicht nachgepflegt"
+
+  - id: D8_review_loop_is_not_d8
+    directive: D8
+    convention: "Review-Befunde an einem offenen PR sind kein D8-Fall: Sie werden im selben Worktree/Branch nachgebessert — kein neues Issue, kein neuer PR."
+    why_not_checkable: "Es ist eine Abgrenzung, keine Invariante: Sie sagt, wann D8 NICHT greift. Ihre maschinelle Entsprechung ist die Zustandsmaschine (`review_finding_fix` in workflow/states.yaml, Owner Lead, `loop: true`) — und der Validator-Befund `d8-review-schleife`, der jede D8-Regel am Trigger `review_finding` meldet."
+    source:
+      agents_md: "Abgrenzung zur Review-Schleife"

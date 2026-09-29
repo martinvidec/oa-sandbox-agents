@@ -1,0 +1,155 @@
+# Pipeline-Schritte mit pre-/postconditions — maschinenlesbare Fassung der Pipeline aus
+# AGENTS.md (Arbeitsaufträge, Worktree-Konvention) und der Zuständigkeiten-Tabelle aus
+# docs/workflow.md. Spec: docs/specs/dsl-workflow.md § 2, vierte Schicht.
+# Geprüft von scripts/validate-workflow.mjs (Schema + Pipeline-Konsistenz, Ebene 2e).
+#
+# Bedingungen sind **strukturierte Felder**, keine freien Strings — sonst prüft niemand, ob
+# das Genannte überhaupt existiert (Lektion R7 aus PR #45). Genau vier Formen, je ein Schlüssel
+# pro Eintrag:
+#   label_check: { state: <Zustand aus workflow/states.yaml>, present: true|false }
+#   actor_check: { role: <Rolle aus workflow/roles.yaml> | human }
+#   ci_check:    { conclusion: success|failure|pending }
+#   fact_check:  { fact: <Fakt aus states.yaml ODER rules.yaml>, expected: true|false }
+# Jede Referenz wird aufgelöst: ein Zustand ohne Label, eine unbekannte Rolle oder ein
+# erfundener Fakt sind Fehler, kein Kommentar im YAML.
+#
+# `state_before`/`state_after` binden den Schritt an die Zustandsmaschine: Sind sie
+# verschieden, muss workflow/states.yaml einen Übergang dazwischen führen, und dessen Owner
+# muss der Akteur des Schritts sein (oder dessen `owner_fallback`).
+version: 1
+source: "AGENTS.md — Arbeitsaufträge (Pipeline), Worktree-Konvention; docs/workflow.md — Zuständigkeiten pro Schritt"
+first: worktree_create
+
+steps:
+  # Akteur ist der Lead, nicht der Coder: `Bash(git worktree *)` steht ausschließlich im
+  # Lead-Set (AGENTS.md D2), und der Lead arbeitet dafür vom Repo-Root — ein Coder-Run könnte
+  # den Schritt nicht ausführen (Review-Befund M3 zu PR #49). Der Zustand `in_progress` ist zu
+  # diesem Zeitpunkt gesetzt, und gesetzt hat ihn der Lead beim Delegieren.
+  - id: worktree_create
+    name: "Worktree anlegen"
+    actor: lead
+    workdir: repo-root
+    delegated: false
+    description: "1 Worktree pro Coding-Aufgabe, Branch `feat|fix|docs/<issue-nr>-<slug>`, Basis `origin/main` — außer das Issue baut auf einem offenen PR auf (D8)."
+    state_before: in_progress
+    state_after: in_progress
+    preconditions:
+      - actor_check:
+          role: lead
+      - label_check:
+          state: in_progress
+          present: true
+    postconditions:
+      - fact_check:
+          fact: branch_contains_declared_base
+          expected: true
+    rules:
+      - D8_worktree_base_is_pr_branch
+    next:
+      - coder_run
+
+  - id: coder_run
+    name: "Coder-Run"
+    actor: coder
+    workdir: worktree
+    delegated: true
+    description: "Implementierung im Worktree, Commits, `git push -u origin HEAD`, Draft-PR mit `Closes #N`, CI-Beleg als PR-Kommentar, dann `agent:review`."
+    state_before: in_progress
+    state_after: review
+    preconditions:
+      - actor_check:
+          role: coder
+      - label_check:
+          state: in_progress
+          present: true
+      # Kein Run startet in einem Worktree, der mitten im Merge steht (D7/D8).
+      - fact_check:
+          fact: worktree_merge_in_progress
+          expected: false
+    postconditions:
+      - fact_check:
+          fact: draft_pr_open
+          expected: true
+      - fact_check:
+          fact: pr_closes_exactly_one_issue
+          expected: true
+      - ci_check:
+          conclusion: success
+      - fact_check:
+          fact: ci_green_evidence_comment
+          expected: true
+      - fact_check:
+          fact: worktree_clean_after_run
+          expected: true
+      - label_check:
+          state: review
+          present: true
+    rules:
+      - D7_no_run_in_merging_worktree
+      - D3_one_issue_per_pr
+      - D4_review_label_needs_evidence
+      - D5_nothing_stays_local
+      - D8_sync_before_compare
+    next:
+      - review_run
+
+  - id: review_run
+    name: "Reviewer-Run"
+    actor: reviewer
+    workdir: worktree
+    delegated: true
+    description: "Zweiter Claude-Code-Run mit sauberem Kontext, prüft den PR-Diff gegen AGENTS.md (D3, D4) und die Akzeptanzkriterien; Befunde als PR-Kommentare, kein Edit am PR-Code."
+    state_before: review
+    state_after: review
+    preconditions:
+      - actor_check:
+          role: reviewer
+      - label_check:
+          state: review
+          present: true
+      - fact_check:
+          fact: pr_is_draft_at_review
+          expected: true
+      - ci_check:
+          conclusion: success
+    postconditions:
+      # Schweigen zählt nicht als Freigabe — ohne Befunde ein Kommentar „Review ok, keine Befunde".
+      - fact_check:
+          fact: review_comment_present
+          expected: true
+    rules:
+      - D8_sync_before_compare
+    # Review-Befunde sind KEIN D8-Fall (AGENTS.md D8, „Abgrenzung zur Review-Schleife"):
+    # Nachbesserung im selben Worktree/Branch, kein neues Issue. Die Schleife zählt gegen
+    # `invariants.max_review_loops` aus workflow/states.yaml.
+    loop:
+      to: coder_run
+      transition: review_finding_fix
+      trigger: review_finding
+      max: 2
+    next:
+      - merge
+
+  - id: merge
+    name: "Merge"
+    actor: human
+    workdir: "n/a"
+    delegated: false
+    description: "Martin merged bei vollständig grünem CI — Human-in-the-Loop, keine Ausnahme (D1). `Closes #N` schließt das Issue."
+    state_before: review
+    state_after: done
+    preconditions:
+      - actor_check:
+          role: human
+      - label_check:
+          state: review
+          present: true
+      - ci_check:
+          conclusion: success
+    postconditions:
+      - fact_check:
+          fact: merged
+          expected: true
+    rules:
+      - D1_merge_by_human
+    next: []
