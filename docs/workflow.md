@@ -2,6 +2,23 @@
 
 > Kanonischer Ablauf vom Arbeitsauftrag bis zum Merge. Details zu Rollen: `AGENTS.md`.
 
+## Struktur-Quelle: die Workflow-DSL
+
+Die **Struktur** dieses Workflows — Rollen, Tool-Allowlists, Budgets, Labels, Zustandsübergänge
+samt Owner — steht maschinenlesbar unter [`../workflow/`](../workflow/) und ist dort die normative
+Quelle: [`roles.yaml`](../workflow/roles.yaml) (AGENTS.md D1/D2) und
+[`states.yaml`](../workflow/states.yaml) (Label-Zustandsmaschine, Invarianten
+`max_review_loops: 2` und `done_requires`). Die Rollen- und die Label-Tabelle in AGENTS.md werden
+daraus generiert; CI prüft generiert gegen eingecheckt
+([`validate-setup.md`](validate-setup.md), Spec: [`specs/dsl-workflow.md`](specs/dsl-workflow.md)).
+
+Dieses Dokument und die Direktiven-Prosa in AGENTS.md bleiben Handtext — sie tragen die
+Begründungen, die eine Generierung platten würde (Spec § 6). Wer eine Rolle, ein Tool-Set, ein
+Budget oder einen Label-Übergang ändert, ändert zuerst die DSL: `node scripts/validate-workflow.mjs`
+prüft sie, `node scripts/render-agents.mjs --write` zieht die Tabellen nach. Das Replay
+tatsächlicher Läufe gegen die DSL (Spec § 3, Ebene 3) ist noch nicht gebaut — die Prüfung ist
+bislang statisch.
+
 ## Pipeline
 
 ```

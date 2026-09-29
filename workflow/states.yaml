@@ -1,0 +1,138 @@
+# Label-Zustandsmaschine des Issue-Lebenszyklus — maschinenlesbare Fassung der Label-Tabelle
+# aus AGENTS.md (Arbeitsaufträge) und der Pipeline aus docs/workflow.md.
+# Die Label-Tabelle in AGENTS.md wird hieraus generiert (scripts/render-agents.mjs);
+# geprüft von scripts/validate-workflow.mjs (Erreichbarkeit, Owner je Übergang, Invarianten).
+#
+# `owner` ist die Rolle aus workflow/roles.yaml, die den Übergang auslöst; dazu die beiden
+# Sonderwerte `human` (Martin) und `any_agent` (jeder Agent, der nicht weiterkommt).
+version: 1
+source: "AGENTS.md — Arbeitsaufträge (Label-Tabelle); docs/workflow.md — Pipeline"
+initial: ready
+
+states:
+  - id: ready
+    label: "agent:ready"
+    set_by: "Lead (bzw. Issue-Template automatisch)"
+    trigger: "Issue ist briefing-fertig"
+    description: "Issue ist briefing-fertig und wartet auf die Delegation."
+    terminal: false
+  - id: in_progress
+    label: "agent:in-progress"
+    set_by: "Lead beim Delegieren"
+    trigger: "Coder-Run startet"
+    description: "Ein Coder-Run (oder Fix-/Sync-Run) arbeitet im Worktree des Issues."
+    terminal: false
+  - id: review
+    label: "agent:review"
+    set_by: "Coder, sobald Draft-PR offen und CI grün (Lead, wenn er nach D7 vollendet)"
+    trigger: "PR wartet auf Reviewer-Run"
+    description: "Draft-PR offen, CI grün belegt; der Reviewer-Run steht an bzw. läuft."
+    terminal: false
+  - id: needs_human
+    label: "needs-human"
+    set_by: "jeder Agent, der nicht weiterkommt"
+    trigger: "Rückfrage an Martin nötig"
+    description: "Rückfrage an Martin; bis zu seiner Entscheidung startet kein weiterer Run."
+    terminal: false
+  - id: blocked
+    label: "blocked"
+    set_by: "jeder Agent, der nicht weiterkommt"
+    trigger: "externe Blockade"
+    description: "Externe Blockade — die Arbeit kann ohne Zutun von außen nicht weitergehen."
+    terminal: false
+  - id: done
+    description: "PR gemergt; `Closes #N` räumt das Issue selbst ab, Labels werden nicht mehr nachgezogen."
+    terminal: true
+
+# Zeilen der Label-Tabelle in AGENTS.md. Eine Zeile je Eintrag; fasst sie mehrere Zustände
+# zusammen, trägt sie label/set_by/trigger selbst, sonst kommen sie aus dem Zustand.
+label_table:
+  - states: [ready]
+  - states: [in_progress]
+  - states: [review]
+  - states: [needs_human, blocked]
+    label: "`needs-human` / `blocked`"
+    set_by: "jeder Agent, der nicht weiterkommt"
+    trigger: "Rückfrage an Martin nötig / externe Blockade"
+
+transitions:
+  - id: delegate
+    from: ready
+    to: in_progress
+    owner: lead
+    trigger: "Lead delegiert den Coder-Run (eigener Worktree, `--max-turns`)"
+    directive: D2
+  - id: hand_to_review
+    from: in_progress
+    to: review
+    owner: coder
+    owner_fallback: lead
+    trigger: "Draft-PR offen UND CI grün als PR-Kommentar belegt"
+    requires: [draft_pr_open, ci_green]
+    directive: D4
+  - id: review_finding_fix
+    from: review
+    to: in_progress
+    owner: coder
+    trigger: "Review-Befunde: Fix-Run im selben Worktree/Branch"
+    loop: true
+    directive: D8
+  - id: merge
+    from: review
+    to: done
+    owner: human
+    trigger: "Martin merged den PR bei grünem CI"
+    requires: [merged, ci_green]
+    directive: D1
+  - id: escalate_ready
+    from: ready
+    to: needs_human
+    owner: any_agent
+    trigger: "Briefing unklar, Rückfrage an Martin nötig"
+    directive: D7
+  - id: escalate_in_progress
+    from: in_progress
+    to: needs_human
+    owner: any_agent
+    trigger: "Run bricht ab (Fix-Run, Sync-Run mitten im Merge) oder kommt nicht weiter"
+    directive: D7
+  - id: escalate_review
+    from: review
+    to: needs_human
+    owner: any_agent
+    trigger: "Mehr als `max_review_loops` Schleifen oder Reviewer kommt nicht weiter"
+    directive: D7
+  - id: block_in_progress
+    from: in_progress
+    to: blocked
+    owner: any_agent
+    trigger: "Externe Blockade während des Runs"
+    directive: D7
+  - id: block_review
+    from: review
+    to: blocked
+    owner: any_agent
+    trigger: "Externe Blockade während der Review-Schleife"
+    directive: D7
+  - id: resume_after_human
+    from: needs_human
+    to: in_progress
+    owner: human
+    trigger: "Martin entscheidet; der Lead delegiert den nächsten Run"
+    directive: D7
+  - id: resume_after_block
+    from: blocked
+    to: in_progress
+    owner: human
+    trigger: "Blockade aufgelöst; der Lead delegiert den nächsten Run"
+    directive: D7
+
+invariants:
+  # Maximal zwei Review-Schleifen, danach needs-human (docs/workflow.md, Review-Schleife 5).
+  max_review_loops: 2
+  loop_transition: review_finding_fix
+  loop_escape: escalate_review
+  # `done` nur über einen Übergang, dessen Owner ein Mensch ist (D1).
+  done_state: done
+  done_by: human
+  done_requires: [merged, ci_green]
