@@ -47,7 +47,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/oa-validate"
           npm install --ignore-scripts --prefix "$RUNNER_TEMP/oa-validate" ajv@^8 js-yaml@^4
-      - name: Workflow-DSL validieren (Schema, Wildcard-Sicherheitsanalyse, Zustandsmaschine)
+      - name: Workflow-DSL validieren (Schema, Wildcard-Sicherheitsanalyse, D2-Prosa-Abgleich, Zustandsmaschine)
         env:
           NODE_PATH: ${{ runner.temp }}/oa-validate/node_modules
         run: node scripts/validate-workflow.mjs

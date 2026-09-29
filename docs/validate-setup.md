@@ -154,24 +154,48 @@ DSL. Der Abgleich läuft deshalb **in beide Richtungen**:
 
 - **Prosa → DSL:** Jede Backtick-eingefasste `Bash(…)`-Form aus dem D2-Abschnitt braucht eine
   Entsprechung in der DSL. In einem Set-Punkt (`- Coder: …`, `- Reviewer: …`, `- Lead (…): …`)
-  zählt nur das Set der eigenen Rolle, deren `conditional_tools` und deren `must_not_include`; in
-  der Begründungsprosa (Punkte wie „Kein blankes `Bash(git *)`") genügt ein Beleg irgendwo in der
-  DSL, weil diese Punkte quer über die Rollen argumentieren („steht in allen drei Sets").
+  zählt nur das Set der eigenen Rolle und deren `conditional_tools`; in der Begründungsprosa
+  (Punkte wie „Kein blankes `Bash(git *)`") genügt ein Beleg irgendwo in der DSL, weil diese
+  Punkte quer über die Rollen argumentieren („steht in allen drei Sets").
 - **DSL → Prosa:** Jeder `Bash(…)`-Eintrag aus `allowed_tools` braucht einen Beleg im Set-Punkt
   seiner Rolle. `conditional_tools` sind ausgenommen — sie stehen laut D2 gerade **nicht** im
   Minimal-Set (Sync-Einträge aus D8, D8-Basiswechsel, D7-Vollendung), ihre Begründung steht am
   Eintrag selbst (`reason`).
 
-Als Entsprechung gilt auch eine **Verbotsform**: Die Prosa nennt sie als Gegenbeispiel, belegt wird
-sie über den Subsumptionsvergleich aus Ebene 2a (`Bash(git -C worktrees/* status)` fällt unter
-`Bash(git -C * status)`). Abschnittsgrenze ist der Aufzählungspunkt `- **D2 …**` bis zum nächsten
-`- **D3…D8 …**`; Fenced-Code-Blöcke fallen vorher raus (ein Befehlsbeispiel wie `git fetch origin`
-im Sync-Block ist keine Freigabeform), und ein Backtick-Span darf umbrechen — der Whitespace darin
-wird normalisiert.
+In der **Begründungsprosa** gilt auch eine **Verbotsform** als Entsprechung: Die Punkte nennen sie
+als Gegenbeispiel, belegt wird sie über den Subsumptionsvergleich aus Ebene 2a
+(`Bash(git -C worktrees/* status)` fällt unter `Bash(git -C * status)`). Abschnittsgrenze ist der
+Aufzählungspunkt `- **D2 …**` bis zum nächsten `- **D3…D8 …**`; Fenced-Code-Blöcke fallen vorher
+raus (ein Befehlsbeispiel wie `git fetch origin` im Sync-Block ist keine Freigabeform), und ein
+Backtick-Span darf umbrechen — der Whitespace darin wird normalisiert.
+
+**Im Set-Punkt gilt das ausdrücklich nicht.** Eine Form, die unter ein Verbot **ihrer Rolle** fällt
+(globale `forbidden_tools` plus die der Rolle) oder in deren `must_not_include` steht, sagt das
+Gegenteil eines Belegs. Zählte sie mit, bliebe genau die teuerste Drift folgenlos: Die Prosa listet
+`Bash(gh pr merge *)` oder `Bash(gh pr edit *)` im Coder-Set, der Lead gibt es beim Delegieren frei
+(M1 zu PR #48). Rollen-eigene Verbote gelten nur für ihre Rolle —
+`Bash(node scripts/verify-mermaid.mjs *)` ist im Reviewer-Set verboten und im Coder-Set Pflicht.
+
+Zulässig ist im Set-Punkt nur das **Zitat**: Die Coder- und die Lead-Zeile von D2 verweisen auf
+„**Kein blankes `Bash(gh issue edit *)`**" und nennen die Verbotsform dabei wörtlich. Erkannt wird
+das über die Querverweis-Konvention von AGENTS.md — ein Verweis nennt die Überschrift des
+Zielpunkts wörtlich in „…", also gilt: Steht die Form **ausschließlich** innerhalb eines solchen
+Zitat-Spans, ist sie zitiert und kein Set-Eintrag. Grenzen dieser Erkennung:
+
+- Kommt dieselbe Form im Punkt einmal zitiert und einmal frei vor, zählt sie **nicht** als Zitat —
+  so steht `Bash(node scripts/verify-mermaid.mjs *)` in der Coder-Zeile zu Recht beides (Eintrag
+  und Querverweis) und wird als Eintrag geprüft.
+- Erkannt wird nur der Span `„…"` (U+201E bis ASCII-`"`, die Schreibweise in AGENTS.md). Ein
+  Querverweis in anderen Anführungszeichen oder ohne schließendes `"` gilt als frei genannt und
+  meldet `zitat-nicht-freigabe`; wer eine Verbotsform ohne Zitat-Span nennen muss, trägt sie als
+  Ausnahme (`side: agents_md`) mit Begründung in die DSL ein.
+- Geprüft wird der Aufzählungspunkt als Ganzes, nicht der Satz: Ein Zitat-Span irgendwo im
+  Set-Punkt deckt jedes Vorkommen derselben Form in diesem Punkt.
 
 | Befund | Bedeutung |
 |---|---|
 | `prosa-ohne-dsl` | Form in D2 genannt, in `roles.yaml` ohne Entsprechung |
+| `zitat-nicht-freigabe` | Verbotsform bzw. `must_not_include`-Eintrag im Set-Punkt, nicht als Zitat erkennbar |
 | `dsl-ohne-prosa` | `allowed_tools`-Eintrag ohne Beleg im Set-Punkt seiner Rolle |
 | `prosa-set-fehlt` / `prosa-set-ohne-d2-set` | `d2_set` und Set-Punkt in AGENTS.md widersprechen sich |
 | `prosa-set-doppelt` | zwei Set-Punkte für dieselbe Rolle — welcher gilt, ist nicht entscheidbar |
@@ -190,8 +214,15 @@ bläht das Minimal-Set auf").
 Aktueller Umfang: **104 abgeglichene Formen** (Textzeile `AGENTS.md ↔ roles.yaml: … D2-Formen
 abgeglichen`, JSON-Feld `geprueft.d2_prosa_formen`). Der Selbsttest prüft die Vergleichslogik gegen
 eine Miniatur-DSL und ein Miniatur-AGENTS.md statt gegen den echten Stand der Dateien — der ist der
-eigentliche Lauf. Jede Richtung hat einen Fall, der melden muss, und einen, der schweigen muss; ein
-Fehlalarm wäre hier so teuer wie ein Durchrutscher.
+eigentliche Lauf. Jede
+Richtung hat mehrere Fälle, die melden müssen, und mehrere, die schweigen müssen (Richtung a:
+fehlende Entsprechung, Verbotsform, Form unterhalb einer Verbotsform, `must_not_include` — dagegen
+Gegenbeispiel in der Begründungsprosa, Zitat im Set-Punkt, umbrochener Backtick-Span, greifende
+Ausnahme; Richtung b entsprechend, beide `side`-Werte der Ausnahmen inklusive); dazu die
+Strukturfälle zu `d2_set`, doppeltem Set-Punkt und fehlendem D2-Abschnitt. Ein Fehlalarm wäre hier
+so teuer wie ein Durchrutscher, deshalb vergleicht jeder Fall die **vollständige** Befundliste —
+ein zusätzlicher Fehlalarm im selben Fall fällt damit auf. `prosa-datei-fehlt` entsteht eine Ebene
+darüber beim Lesen der Datei und hat deshalb keinen Selbsttest-Fall.
 
 > **Doku-Gleichzug.** Wer ein Tool-Set ändert, ändert `roles.yaml` **und** die D2-Prosa im selben
 > PR — das war vorher Disziplin und ist jetzt CI. Die Lektion gilt eine Ebene höher weiter und

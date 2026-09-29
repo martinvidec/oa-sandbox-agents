@@ -296,18 +296,44 @@ export function d2Abschnitt(markdown) {
   return zeilen.slice(von, bis).join('\n');
 }
 
-// Alle Backtick-eingefassten `Bash(…)`-Formen eines Textstücks, Reihenfolge erhalten, Dubletten
-// entfernt. Robust gegen Zeilenumbrüche: In der Prosa ist ein Aufzählungspunkt über mehrere
-// Zeilen umbrochen, eine Form kann also mitten im Backtick-Span umbrechen — der Whitespace
-// innerhalb des Spans wird deshalb auf ein Leerzeichen normalisiert. Der Span muss auf `)`
-// enden; „`Bash(a) und Bash(b)`" in einem Span wäre keine Freigabeform und fällt auf.
+// Alle Backtick-eingefassten `Bash(…)`-Formen eines Textstücks samt Position. Robust gegen
+// Zeilenumbrüche: In der Prosa ist ein Aufzählungspunkt über mehrere Zeilen umbrochen, eine Form
+// kann also mitten im Backtick-Span umbrechen — der Whitespace innerhalb des Spans wird deshalb
+// auf ein Leerzeichen normalisiert. Der Span muss auf `)` enden; „`Bash(a) und Bash(b)`" in einem
+// Span wäre keine Freigabeform und fällt auf.
+function bashVorkommen(text) {
+  const vorkommen = [];
+  for (const m of (text ?? '').matchAll(/`(Bash\([^`]*\))`/g)) {
+    vorkommen.push({ form: m[1].replace(/\s+/g, ' ').trim(), von: m.index, bis: m.index + m[0].length });
+  }
+  return vorkommen;
+}
+
+// Dieselben Formen ohne Position, Reihenfolge erhalten, Dubletten entfernt.
 export function inlineBashFormen(text) {
   const formen = [];
-  for (const m of (text ?? '').matchAll(/`(Bash\([^`]*\))`/g)) {
-    const form = m[1].replace(/\s+/g, ' ').trim();
-    if (!formen.includes(form)) formen.push(form);
-  }
+  for (const v of bashVorkommen(text)) if (!formen.includes(v.form)) formen.push(v.form);
   return formen;
+}
+
+// Zitat-Span: Ein Querverweis nennt die Überschrift des Zielpunkts wörtlich in „…" (AGENTS.md,
+// Querverweis-Konvention — „Ein Verweis … nennt dessen fett gesetzte Überschrift wörtlich"). Die
+// Konvention ist damit maschinell auswertbar: Was in einem solchen Span steht, ist zitiert.
+const ZITAT_SPAN = /„[^„]*?"/g;
+
+// Formen, die im Textstück ausschließlich innerhalb eines Zitat-Spans stehen. Kommt dieselbe Form
+// einmal zitiert und einmal frei vor — in der Coder-Zeile von D2 ist
+// `Bash(node scripts/verify-mermaid.mjs *)` beides: Set-Eintrag und Zitat im Querverweis —, zählt
+// sie nicht als Zitat. Ein Zitat-Span ohne schließendes `"` wird nicht erkannt; die Form gilt dann
+// als frei genannt (dokumentiert in docs/validate-setup.md, Ebene 2c).
+export function zitierteFormen(text) {
+  const spans = [...(text ?? '').matchAll(ZITAT_SPAN)].map(m => [m.index, m.index + m[0].length]);
+  const nurZitat = new Map();
+  for (const v of bashVorkommen(text)) {
+    const drin = spans.some(([von, bis]) => v.von >= von && v.bis <= bis);
+    nurZitat.set(v.form, (nurZitat.get(v.form) ?? true) && drin);
+  }
+  return new Set([...nurZitat].filter(([, drin]) => drin).map(([form]) => form));
 }
 
 // Das Label eines Aufzählungspunkts: der Text vor dem ersten `:`, sofern er ohne Backtick und
@@ -328,7 +354,7 @@ export function d2Bloecke(abschnitt) {
   }
   return rohe.map(b => {
     const text = b.zeilen.join('\n');
-    return { indent: b.indent, label: blockLabel(text), formen: inlineBashFormen(text) };
+    return { indent: b.indent, label: blockLabel(text), formen: inlineBashFormen(text), zitate: zitierteFormen(text) };
   });
 }
 
@@ -349,15 +375,20 @@ const bedingteFormen = rolle => (rolle.conditional_tools ?? []).flatMap(
 
 // Beidseitiger Abgleich der D2-Prosa gegen die Tool-Sets von roles.yaml:
 //   Richtung a — jede in D2 genannte `Bash(…)`-Form braucht eine Entsprechung in der DSL. In
-//     einem Set-Punkt zählt nur das Set der eigenen Rolle (plus deren conditional_tools und die
-//     Verbotsformen, auf die der Punkt verweist); in der Begründungsprosa zählt die ganze DSL,
-//     weil die Punkte quer über die Rollen argumentieren.
+//     einem Set-Punkt zählt nur das Set der eigenen Rolle plus deren conditional_tools; in der
+//     Begründungsprosa zählt die ganze DSL, weil die Punkte quer über die Rollen argumentieren.
 //   Richtung b — jeder `Bash(…)`-Eintrag aus `allowed_tools` braucht einen Beleg im Set-Punkt
 //     seiner Rolle. `conditional_tools` sind ausgenommen: Sie stehen laut D2 gerade NICHT im
 //     Minimal-Set (Sync-Einträge, D8-Basiswechsel, D7-Vollendung), ihre Begründung steht am
 //     Eintrag selbst (`reason`).
-// Als Entsprechung gilt auch eine Verbotsform: Die Prosa nennt sie als Gegenbeispiel, und der
-// Subsumptionsvergleich belegt sie (`Bash(git -C worktrees/* status)` unter `Bash(git -C * status)`).
+// In der Begründungsprosa gilt auch eine Verbotsform als Entsprechung: Die Punkte nennen sie als
+// Gegenbeispiel, und der Subsumptionsvergleich belegt sie (`Bash(git -C worktrees/* status)` unter
+// `Bash(git -C * status)`). **Im Set-Punkt gilt das nicht** (M1 zu PR #48): Eine Form, die unter
+// ein Verbot der Rolle fällt oder in ihrem `must_not_include` steht, sagt das Gegenteil eines
+// Belegs — stünde sie dort unerkannt, listete die Prosa ein verbotenes Tool im Minimal-Set, und
+// der Lead gäbe es beim Delegieren frei. Zulässig ist im Set-Punkt nur das Zitat: die Form
+// innerhalb eines Zitat-Spans „…" (Querverweis-Konvention, `zitierteFormen`), so wie die
+// Coder- und die Lead-Zeile von D2 auf „**Kein blankes `Bash(gh issue edit *)`**" verweisen.
 // Alles, was in keine dieser Kategorien fällt, steht als Ausnahme mit Begründung in der DSL
 // (`d2_prose_check.excluded_entries`, je mit `side`, `directive` und `reason`) — eine stille
 // Ausnahme im Skript gibt es nicht.
@@ -410,6 +441,13 @@ export function d2Abgleich(markdown, roles) {
     }
     const prosaFormen = [...new Set(eigene.flatMap(s => s.formen))];
     const dslFormen = (rolle.allowed_tools ?? []).filter(istBash);
+    // Zitat gilt nur, wenn die Form in jedem Set-Punkt der Rolle, der sie nennt, zitiert ist.
+    const zitate = new Set(prosaFormen.filter(e => eigene.every(s => !s.formen.includes(e) || s.zitate.has(e))));
+    // Verbote der Rolle: die globalen plus ihre eigenen. Rollen-eigene Verbote gelten nur für sie —
+    // `Bash(node scripts/verify-mermaid.mjs *)` ist im Reviewer-Set verboten und im Coder-Set Pflicht.
+    const rollenVerbote = [...(roles.forbidden_tools ?? []), ...(rolle.forbidden_tools ?? [])];
+    const mustNot = new Set((rolle.must_not_include ?? []).filter(istBash));
+    const keineFreigabe = e => mustNot.has(e) || verbotsbefunde(e, rollenVerbote).length > 0;
 
     // Richtung b: Allowlist-Eintrag ohne Beleg im Set-Punkt der eigenen Rolle.
     for (const e of dslFormen) {
@@ -418,14 +456,19 @@ export function d2Abgleich(markdown, roles) {
       if (ausnahme(e, 'roles_yaml')) continue;
       add('dsl-ohne-prosa', `\`${rolle.id}\`/allowed_tools: \`${e}\` kommt im D2-Set-Punkt „${eigene[0].label}" von AGENTS.md nicht vor — Prosa und DSL laufen auseinander`);
     }
-    // Richtung a: Form im Set-Punkt, die die DSL für diese Rolle nicht führt.
-    const eigenesUniversum = new Set([
-      ...dslFormen, ...bedingteFormen(rolle).filter(istBash), ...(rolle.must_not_include ?? []).filter(istBash),
-    ]);
+    // Richtung a: Form im Set-Punkt, die die DSL für diese Rolle nicht führt. `must_not_include`
+    // gehört bewusst NICHT ins Universum — die Liste sagt, was im Set nicht stehen darf.
+    const eigenesUniversum = new Set([...dslFormen, ...bedingteFormen(rolle).filter(istBash)]);
     for (const e of prosaFormen) {
       geprueft++;
-      if (eigenesUniversum.has(e) || alsVerbotBelegt(e) || ausnahme(e, 'agents_md')) continue;
-      add('prosa-ohne-dsl', `AGENTS.md D2, Set-Punkt „${eigene[0].label}": \`${e}\` hat in roles.yaml keine Entsprechung für \`${rolle.id}\` (weder im Set noch in \`conditional_tools\` noch als Verbotsform)`);
+      if (ausnahme(e, 'agents_md')) continue;
+      if (keineFreigabe(e)) {
+        if (zitate.has(e)) continue;
+        add('zitat-nicht-freigabe', `AGENTS.md D2, Set-Punkt „${eigene[0].label}": \`${e}\` ist für \`${rolle.id}\` keine Freigabeform (Verbotsform aus \`forbidden_tools\` bzw. Eintrag in \`must_not_include\`) — im Set-Punkt zählt sie nicht als Beleg. Als Querverweis gehört sie in einen Zitat-Span „…" (Querverweis-Konvention), sonst listet der Set-Punkt ein verbotenes Tool`);
+        continue;
+      }
+      if (eigenesUniversum.has(e)) continue;
+      add('prosa-ohne-dsl', `AGENTS.md D2, Set-Punkt „${eigene[0].label}": \`${e}\` hat in roles.yaml keine Entsprechung für \`${rolle.id}\` (weder im Set noch in \`conditional_tools\`)`);
     }
   }
 
@@ -506,83 +549,153 @@ const VERBOTS_ERLAUBT = [
 
 // Fälle für den beidseitigen D2-Prosa-Abgleich. Geprüft wird gegen eine Miniatur-DSL und ein
 // Miniatur-AGENTS.md: Der Selbsttest soll die Vergleichslogik prüfen, nicht den jeweiligen Stand
-// der echten Dateien — der ist der eigentliche Lauf. Jede Richtung braucht einen Fall, der
-// meldet, und einen, der schweigen muss; ein Fehlalarm hier wäre so teuer wie ein Durchrutscher.
+// der echten Dateien — der ist der eigentliche Lauf. Jede Richtung hat mehrere Fälle, die melden
+// müssen, und mehrere, die schweigen müssen; ein Fehlalarm hier wäre so teuer wie ein
+// Durchrutscher. Erwartet wird die **vollständige** Befundliste (`codes`), nicht nur ein
+// enthaltener Code: Ein zusätzlicher Fehlalarm im selben Fall fiele sonst nicht auf (M2 zu PR #48).
 const D2_MINI_ROLLEN = {
   forbidden_tools: [
     { pattern: 'Bash(git *)', directive: 'D2', match: 'blanket', reason: 'blankes Sammelpattern' },
+    // Damit der Set-Punkt-Check gegen eine echte Verbotsform läuft und nicht nur gegen eine
+    // unbeteiligte: `Bash(gh pr merge *)` steht in der echten roles.yaml genauso (M1 zu PR #48).
+    { pattern: 'Bash(gh pr merge *)', directive: 'D1', reason: 'Merge nur durch Martin' },
   ],
   d2_prose_check: { file: 'AGENTS.md', excluded_entries: [] },
   roles: [
     {
       id: 'coder', name: 'Coder', d2_set: true,
       allowed_tools: ['Read', 'Bash(git status *)', 'Bash(git add *)'],
+      must_not_include: ['Bash(gh pr edit *)'],
       conditional_tools: [{ id: 'sync_run', directive: 'D8', reason: 'Sync-Einträge, D8', grants: ['Bash(git merge origin/main)'] }],
     },
   ],
 };
-// Miniatur-AGENTS.md: D2-Aufzählung, ein Set-Punkt, optional ein Begründungspunkt, dann D3 —
-// mehr braucht die Abschnittsgrenze nicht.
-const d2Mini = (setZeilen, prosa) => [
+// Variante mit zweiter Rolle ohne D2-Set — für `prosa-set-ohne-d2-set`.
+const D2_MINI_MIT_TESTER = {
+  ...D2_MINI_ROLLEN,
+  roles: [...D2_MINI_ROLLEN.roles, { id: 'tester', name: 'Tester', d2_set: false }],
+};
+// Miniatur-DSL mit einer Ausnahme; `side` unterscheidet die beiden Richtungen.
+const d2MiniMitAusnahme = (entry, side, reason) => ({
+  ...D2_MINI_ROLLEN,
+  d2_prose_check: { file: 'AGENTS.md', excluded_entries: [{ entry, side, directive: 'D2', reason }] },
+});
+// Miniatur-AGENTS.md: D2-Aufzählung, ein Set-Punkt (Folgezeilen davon als Umbruch), beliebig viele
+// weitere Punkte, dann D3 — mehr braucht die Abschnittsgrenze nicht.
+const d2Mini = (setZeilen, ...weitere) => [
   '- **D2 — Budget-Guards:** Delegationen immer mit `--max-turns`. Minimal-Set:',
   ...setZeilen.map((z, i) => (i === 0 ? `  - ${z}` : `    ${z}`)),
-  ...(prosa ? [`  - ${prosa}`] : []),
+  ...weitere.map(z => `  - ${z}`),
   '- **D3 — Kleine PRs:** Ein PR = ein Issue.',
 ].join('\n');
+// Der vollständige Set-Punkt der Miniatur-Rolle: enthält genau die `Bash(…)`-Einträge ihrer
+// Allowlist, erzeugt also für sich genommen keinen Befund.
+const D2_SET_PUNKT = 'Coder: `Read`, `Bash(git status *)`, `Bash(git add *)`';
 const D2_FAELLE = [
+  // --- Richtung a (Prosa → DSL), melden
   {
     id: 'Richtung a: Prosa-Form ohne DSL-Entsprechung',
-    md: d2Mini(['Coder: `Read`, `Bash(git status *)`, `Bash(git add *)`, `Bash(gh pr merge *)`']),
-    code: 'prosa-ohne-dsl',
+    md: d2Mini([`${D2_SET_PUNKT}, \`Bash(gh run view *)\``]),
+    codes: ['prosa-ohne-dsl'],
   },
   {
-    id: 'Richtung a Gegenrichtung: Verbotsform als Gegenbeispiel',
-    md: d2Mini(['Coder: `Read`, `Bash(git status *)`, `Bash(git add *)`'], 'Kein blankes `Bash(git *)`.'),
-    code: null,
+    id: 'Richtung a: Verbotsform im Set-Punkt ist kein Beleg',
+    md: d2Mini([`${D2_SET_PUNKT}, \`Bash(gh pr merge *)\``]),
+    codes: ['zitat-nicht-freigabe'],
   },
+  {
+    id: 'Richtung a: Form unterhalb einer Verbotsform im Set-Punkt ist kein Beleg',
+    md: d2Mini([`${D2_SET_PUNKT}, \`Bash(gh pr merge --squash *)\``]),
+    codes: ['zitat-nicht-freigabe'],
+  },
+  {
+    id: 'Richtung a: must_not_include-Form im Set-Punkt ist kein Beleg',
+    md: d2Mini([`${D2_SET_PUNKT}, \`Bash(gh pr edit *)\``]),
+    codes: ['zitat-nicht-freigabe'],
+  },
+  // --- Richtung a, Gegenrichtung (schweigen)
+  {
+    id: 'Richtung a Gegenrichtung: Verbotsform in der Begründungsprosa',
+    md: d2Mini([D2_SET_PUNKT], 'Kein blankes `Bash(git *)`.'),
+    codes: [],
+  },
+  {
+    id: 'Richtung a Gegenrichtung: Verbotsform im Set-Punkt, aber als Zitat',
+    md: d2Mini([`${D2_SET_PUNKT} (Begründung in „**Kein \`Bash(gh pr merge *)\`**")`]),
+    codes: [],
+  },
+  {
+    id: 'Richtung a Gegenrichtung: Zeilenumbruch mitten im Backtick-Span',
+    md: d2Mini(['Coder: `Read`, `Bash(git status *)`, `Bash(git', 'add *)`']),
+    codes: [],
+  },
+  {
+    id: 'Richtung a Gegenrichtung: Ausnahme (side: agents_md) greift',
+    md: d2Mini([D2_SET_PUNKT], 'Argumentlos (`Bash(git status)`) ist nicht nötig.'),
+    roles: d2MiniMitAusnahme('Bash(git status)', 'agents_md', 'bläht das Minimal-Set auf'),
+    codes: [],
+  },
+  // --- Richtung b (DSL → Prosa), melden
   {
     id: 'Richtung b: Allowlist-Eintrag ohne Prosa-Beleg',
     md: d2Mini(['Coder: `Read`, `Bash(git status *)`']),
-    code: 'dsl-ohne-prosa',
+    codes: ['dsl-ohne-prosa'],
   },
   {
-    id: 'Richtung b Gegenrichtung: conditional_tools braucht keinen Beleg',
-    md: d2Mini(['Coder: `Read`, `Bash(git status *)`, `Bash(git add *)`']),
-    code: null,
+    id: 'Richtung b: mehrere Allowlist-Einträge ohne Prosa-Beleg',
+    md: d2Mini(['Coder: `Read`']),
+    codes: ['dsl-ohne-prosa', 'dsl-ohne-prosa'],
   },
   {
-    id: 'Zeilenumbruch mitten im Backtick-Span',
-    md: d2Mini(['Coder: `Read`, `Bash(git status *)`, `Bash(git', 'add *)`']),
-    code: null,
+    id: 'Richtung b: Ausnahme (side: roles_yaml) ohne Bezug',
+    md: d2Mini([D2_SET_PUNKT]),
+    roles: d2MiniMitAusnahme('Bash(git add *)', 'roles_yaml', 'längst behobene Abweichung'),
+    codes: ['ausnahme-ohne-bezug'],
   },
+  // --- Richtung b, Gegenrichtung (schweigen)
+  {
+    id: 'Richtung b Gegenrichtung: conditional_tools brauchen keinen Beleg',
+    md: d2Mini([D2_SET_PUNKT]),
+    codes: [],
+  },
+  {
+    id: 'Richtung b Gegenrichtung: Ausnahme (side: roles_yaml) greift',
+    md: d2Mini(['Coder: `Read`, `Bash(git status *)`']),
+    roles: d2MiniMitAusnahme('Bash(git add *)', 'roles_yaml', 'bewusst nicht in der Prosa'),
+    codes: [],
+  },
+  {
+    id: 'Richtung b Gegenrichtung: Nicht-Bash-Einträge brauchen keinen Beleg',
+    md: d2Mini(['Coder: `Bash(git status *)`, `Bash(git add *)`']),
+    codes: [],
+  },
+  // --- Struktur: d2_set, Set-Punkte, Quelle
   {
     id: 'Set-Punkt fehlt trotz d2_set',
     md: d2Mini(['Kein Set, nur Prosa mit `Bash(git status *)` und `Bash(git add *)`.']),
-    code: 'prosa-set-fehlt',
+    codes: ['prosa-set-fehlt'],
   },
   {
-    id: 'Ausnahme ohne Bezug',
-    md: d2Mini(['Coder: `Read`, `Bash(git status *)`, `Bash(git add *)`']),
-    roles: {
-      ...D2_MINI_ROLLEN,
-      d2_prose_check: {
-        file: 'AGENTS.md',
-        excluded_entries: [{ entry: 'Bash(gh pr view *)', side: 'agents_md', directive: 'D2', reason: 'veraltete Ausnahme' }],
-      },
-    },
-    code: 'ausnahme-ohne-bezug',
+    id: 'Set-Punkt trotz d2_set: false',
+    md: d2Mini([D2_SET_PUNKT], 'Tester: `Read`'),
+    roles: D2_MINI_MIT_TESTER,
+    codes: ['prosa-set-ohne-d2-set'],
   },
   {
-    id: 'Ausnahme greift: Prosa-Form bewusst ohne DSL-Eintrag',
-    md: d2Mini(['Coder: `Read`, `Bash(git status *)`, `Bash(git add *)`'], 'Argumentlos (`Bash(git status)`) ist nicht nötig.'),
-    roles: {
-      ...D2_MINI_ROLLEN,
-      d2_prose_check: {
-        file: 'AGENTS.md',
-        excluded_entries: [{ entry: 'Bash(git status)', side: 'agents_md', directive: 'D2', reason: 'bläht das Minimal-Set auf' }],
-      },
-    },
-    code: null,
+    id: 'zwei Set-Punkte für dieselbe Rolle',
+    md: d2Mini([D2_SET_PUNKT], D2_SET_PUNKT.replace('Coder:', 'Coder (Fix-Run):')),
+    codes: ['prosa-set-doppelt'],
+  },
+  {
+    id: 'D2-Abschnitt fehlt',
+    md: '- **D1 — Merge nur durch Martin**\n- **D3 — Kleine PRs:** Ein PR = ein Issue.',
+    codes: ['d2-abschnitt-fehlt'],
+  },
+  {
+    id: 'Ausnahme (side: agents_md) ohne Bezug',
+    md: d2Mini([D2_SET_PUNKT]),
+    roles: d2MiniMitAusnahme('Bash(gh pr view *)', 'agents_md', 'veraltete Ausnahme'),
+    codes: ['ausnahme-ohne-bezug'],
   },
 ];
 
@@ -613,10 +726,13 @@ function runSelftest(verbotsformen) {
     const codes = verbotsbefunde(entry, verbotsformen).map(b => b.code);
     fall('erlaubt trotz Verbotsliste', entry, 'kein Befund', codes, codes.length === 0, 'fehlalarm');
   }
+  // Verglichen wird die vollständige Befundliste, nicht nur „enthält den erwarteten Code": Ein
+  // zusätzlicher Fehlalarm im selben Fall bliebe sonst unsichtbar (M2 zu PR #48).
   for (const f of D2_FAELLE) {
-    const codes = d2Abgleich(f.md, f.roles ?? D2_MINI_ROLLEN).befunde.map(b => b.code);
-    const ok = f.code ? codes.includes(f.code) : codes.length === 0;
-    fall(f.id, f.md, f.code ?? 'kein Befund', codes, ok, 'd2-abgleich-fall-nicht-gefangen');
+    const erwartet = [...f.codes].sort();
+    const codes = d2Abgleich(f.md, f.roles ?? D2_MINI_ROLLEN).befunde.map(b => b.code).sort();
+    const ok = codes.length === erwartet.length && erwartet.every((c, i) => c === codes[i]);
+    fall(f.id, f.md, erwartet.join(', ') || 'kein Befund', codes, ok, 'd2-abgleich-fall-nicht-gefangen');
   }
   return ergebnis;
 }
