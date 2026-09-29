@@ -3,7 +3,8 @@
 //
 //   node scripts/validate-workflow.mjs [--root <verzeichnis>] [--json] [--selftest]
 //
-// Ebene 1  Schema: roles.yaml und states.yaml gegen JSON-Schemata (ajv), Referenzauflösung.
+// Ebene 1  Schema: roles.yaml, states.yaml, rules.yaml und pipeline.yaml gegen JSON-Schemata
+//          (ajv), Referenzauflösung.
 // Ebene 2  Konsistenz: Wildcard-Sicherheitsanalyse der Tool-Allowlists (Argument-Wildcard ok;
 //          Wert-Wildcard, Injektionsformen wie -C/-c/--git-dir=…, Verkettungs- und
 //          Umlenkungszeichen, Variablen-Expansion, nicht-terminale Wildcards und blanke
@@ -11,7 +12,10 @@
 //          (eine Freigabe darf weder unter ein Verbot fallen noch eines mit abdecken),
 //          beidseitiger Abgleich der `Bash(…)`-Formen aus den D2-Abschnitten von AGENTS.md
 //          gegen die Tool-Sets der DSL und Zustandsmaschinen-Checks (Erreichbarkeit, Owner
-//          je Übergang, Invarianten).
+//          je Übergang, Invarianten). Dazu die Regel-Konsistenz von rules.yaml (Vokabular für
+//          `on`/`check`/`assert`, Abdeckung von D1–D8, Querverweise gegen die fetten
+//          Überschriften von AGENTS.md) und die Pipeline-Konsistenz von pipeline.yaml
+//          (strukturierte pre-/postconditions gegen Rollen, Zustände, Fakten und Regeln).
 // Ebene 3  Runtime-Replay: nicht in diesem MVP (Spec § 5.5).
 //
 // Exit-Code: 0 = keine Fehler (Warnungen erlaubt), 1 = Fehler gefunden,
@@ -495,6 +499,350 @@ export function d2Abgleich(markdown, roles) {
   return { befunde, geprueft, ausnahmen };
 }
 
+// ------------------------------------------------- Ebene 2d: Regel-Konsistenz (rules.yaml)
+//
+// `rules.yaml` macht die Direktiven prüfbar. Damit das mehr ist als eine Umformatierung der
+// Prosa, prüft diese Ebene die Regeln gegen ihre eigenen Vokabulare: Ein `check`, das keine
+// Quelle hat, ein `assert` über einen erfundenen Fakt oder ein `source`, der in AGENTS.md
+// keine fett gesetzte Überschrift ist, machen aus einer Regel eine Behauptung.
+
+// Operatoren von `assert` und ihr Operand. Die Zuordnung ist nicht Geschmackssache:
+// `is_true` mit einem `value` daneben liest sich wie ein Vergleich und ist keiner.
+const ASSERT_OPERATOREN = {
+  is_true: null, is_false: null,
+  equals: 'value', not_equals: 'value', matches: 'value',
+  one_of: 'values', none_of: 'values',
+};
+// D6 — Keine eigene Infrastruktur: Es gibt GitHub und den lokalen Rechner, sonst nichts.
+const INFRASTRUKTUR = ['github', 'local'];
+
+// Die fett gesetzten Überschriften einer Markdown-Datei — die Zielmenge der
+// Querverweis-Konvention von AGENTS.md. Der abschließende Satzpunkt (`.` bzw. `:`) gehört
+// laut Konvention zum Satz, nicht zur Überschrift, und wird deshalb hier abgeschnitten:
+// „**Eskalation:**" ist die Überschrift „Eskalation". Gelesen wird zeilenweise und
+// nicht-gierig, damit Formen wie `Bash(git *)` innerhalb der Fettung nicht stören.
+export function fetteUeberschriften(markdown) {
+  const gefunden = new Set();
+  for (const zeile of (markdown ?? '').split('\n')) {
+    for (const m of zeile.matchAll(/\*\*(.+?)\*\*/g)) {
+      const text = m[1].trim().replace(/[.:]+$/, '').trim();
+      if (text) gefunden.add(text);
+    }
+  }
+  return gefunden;
+}
+
+// Prüft rules.yaml gegen sich selbst und gegen den Kontext:
+//   fremdeFaktIds  — Fakt-IDs aus states.yaml (Kollisionen sind Fehler: beide Listen bilden
+//                    ein Vokabular, das pipeline.yaml referenziert)
+//   ueberschriften — die fetten Überschriften von AGENTS.md; `null` schaltet die Auflösung ab
+//   dateiExistiert — Existenzprüfung für `source.doc`
+//   genutztAnderswo — was pipeline.yaml referenziert (für die „ungenutzt"-Warnungen)
+export function regelKonsistenz(rules, ctx) {
+  const befunde = [];
+  const add = (code, message, level = 'error') => befunde.push({ code, message, level });
+  const {
+    fremdeFaktIds = new Set(), ueberschriften = null, dateiExistiert = () => true,
+    genutztAnderswo = {},
+  } = ctx ?? {};
+  const extern = {
+    fakten: genutztAnderswo.fakten ?? new Set(),
+    trigger: genutztAnderswo.trigger ?? new Set(),
+    regeln: genutztAnderswo.regeln ?? new Set(),
+  };
+
+  const quellen = new Map();
+  for (const q of rules.check_sources ?? []) {
+    if (quellen.has(q.id)) add('doppelte-id', `check_sources: \`${q.id}\` doppelt vergeben`);
+    quellen.set(q.id, q);
+    if (!INFRASTRUKTUR.includes(q.infrastructure)) {
+      add('fremde-infrastruktur', `check_sources/\`${q.id}\`: \`infrastructure: ${q.infrastructure}\` — es gibt nur \`${INFRASTRUKTUR.join('` und `')}\` (D6 — Keine eigene Infrastruktur)`);
+    }
+  }
+
+  const trigger = new Map();
+  for (const t of rules.triggers ?? []) {
+    if (trigger.has(t.id)) add('doppelte-id', `triggers: \`${t.id}\` doppelt vergeben`);
+    trigger.set(t.id, t);
+    if (!quellen.has(t.observable_via)) {
+      add('unbekannte-check-quelle', `triggers/\`${t.id}\`: observable_via \`${t.observable_via}\` steht nicht in \`check_sources\` — das Ereignis wäre nicht beobachtbar`);
+    }
+  }
+
+  const fakten = new Map();
+  for (const f of rules.facts ?? []) {
+    if (fakten.has(f.id)) add('doppelte-id', `facts: \`${f.id}\` doppelt vergeben`);
+    fakten.set(f.id, f);
+    if (fremdeFaktIds.has(f.id)) {
+      add('fakt-id-kollision', `facts/\`${f.id}\`: die ID gibt es auch in workflow/states.yaml — beide Listen bilden ein Vokabular, bei doppelter ID ist nicht entscheidbar, welcher Fakt gemeint ist`);
+    }
+    if (!quellen.has(f.check)) add('unbekannte-check-quelle', `facts/\`${f.id}\`: check \`${f.check}\` steht nicht in \`check_sources\``);
+  }
+
+  const genutzteFakten = new Set();
+  const genutzteQuellen = new Set();
+  const genutzteTrigger = new Set();
+
+  // Querverweis: genau eine Belegstelle, und sie muss auflösbar sein.
+  const pruefeQuelle = (wo, quelle) => {
+    const hat = ['agents_md', 'doc'].filter(k => quelle?.[k] !== undefined);
+    if (hat.length === 0) { add('quelle-fehlt', `${wo}: source nennt weder \`agents_md\` noch \`doc\` — die Regel hat keine belegte Herkunft`); return; }
+    if (hat.length > 1) { add('quelle-doppelt', `${wo}: source nennt \`agents_md\` UND \`doc\` — welche Stelle gilt, ist nicht entscheidbar`); return; }
+    if (quelle.doc !== undefined) {
+      for (const datei of quelle.doc.match(/\b(?:[\w.-]+\/)*[\w.-]+\.(?:md|ya?ml|mjs)\b/g) ?? []) {
+        if (!dateiExistiert(datei)) add('quelldatei-fehlt', `${wo}: source.doc nennt \`${datei}\` — die Datei gibt es im Repo nicht`);
+      }
+      return;
+    }
+    const text = quelle.agents_md;
+    if (/[.:]$/.test(text)) {
+      add('ueberschrift-satzpunkt', `${wo}: source.agents_md \`${text}\` endet auf einen Satzpunkt — Querverweise zitieren den Überschriftentext ohne ihn (AGENTS.md, Querverweis-Konvention, „Satzpunkt")`);
+      return;
+    }
+    if (ueberschriften && !ueberschriften.has(text)) {
+      add('ueberschrift-fehlt', `${wo}: source.agents_md \`${text}\` kommt in AGENTS.md nicht als fett gesetzte Überschrift vor — toter Querverweis`);
+    }
+  };
+
+  // `assert`: entweder ein Blatt (fact + operator) oder eine Verknüpfung `all_of`/`any_of`
+  // aus Blättern. Jeder genannte Fakt muss existieren UND aus derselben Quelle kommen, die
+  // die Regel als `check` führt — sonst prüft niemand dort, wo die Regel es behauptet.
+  const pruefeAssert = (wo, a, regelCheck, tiefe = 0) => {
+    const zweige = ['all_of', 'any_of'].filter(k => Array.isArray(a?.[k]));
+    if (zweige.length > 1) { add('assert-form', `${wo}: assert nennt \`all_of\` und \`any_of\` zugleich`); return; }
+    if (zweige.length === 1) {
+      const z = zweige[0];
+      if (tiefe > 0) { add('assert-form', `${wo}: \`${z}\` ist geschachtelt — vorgesehen ist eine Ebene aus Blättern`); return; }
+      if (a.fact !== undefined) { add('assert-form', `${wo}: assert nennt \`${z}\` und zugleich ein eigenes \`fact\``); return; }
+      if (a[z].length < 2) add('assert-form', `${wo}: \`${z}\` mit ${a[z].length} Zweig — eine Verknüpfung braucht mindestens zwei`);
+      for (const zweig of a[z]) pruefeAssert(wo, zweig, regelCheck, tiefe + 1);
+      return;
+    }
+    if (a?.fact === undefined) { add('assert-form', `${wo}: assert nennt weder ein \`fact\` noch \`all_of\`/\`any_of\``); return; }
+    const op = a.operator;
+    if (!(op in ASSERT_OPERATOREN)) {
+      add('unbekannter-operator', `${wo}: operator \`${op}\` — erlaubt sind ${Object.keys(ASSERT_OPERATOREN).map(o => `\`${o}\``).join(', ')}`);
+    } else {
+      const gesetzt = ['value', 'values'].filter(k => a[k] !== undefined);
+      const soll = ASSERT_OPERATOREN[op] ? [ASSERT_OPERATOREN[op]] : [];
+      if (gesetzt.join(',') !== soll.join(',')) {
+        add('assert-operand', `${wo}: operator \`${op}\` erwartet ${soll.length ? `\`${soll[0]}\`` : 'keinen Operanden'}, gefunden: ${gesetzt.length ? gesetzt.map(k => `\`${k}\``).join(', ') : 'keinen'}`);
+      }
+    }
+    genutzteFakten.add(a.fact);
+    const f = fakten.get(a.fact);
+    if (!f) { add('unbekannter-fakt', `${wo}: assert nennt \`${a.fact}\` — kein Fakt aus \`facts\``); return; }
+    if (f.check !== regelCheck) {
+      add('fakt-quelle-abweichend', `${wo}: die Regel führt \`check: ${regelCheck}\`, der Fakt \`${a.fact}\` kommt aber aus \`${f.check}\` — dann prüft niemand dort, wo die Regel es behauptet`);
+    }
+  };
+
+  // Abdeckung: jede Direktive entweder als Regel oder ausdrücklich als Prosa-Konvention.
+  const abgedeckt = new Set();
+  const regelIds = new Set();
+  const regelListe = rules.rules ?? [];
+
+  for (const [i, r] of regelListe.entries()) {
+    const wo = `rules/\`${r.id}\``;
+    if (regelIds.has(r.id)) add('doppelte-id', `${wo}: Regel-ID doppelt vergeben`);
+    regelIds.add(r.id);
+    if (i === 0 && r.id !== 'DSL_self_validation') {
+      add('selbstvalidierung-nicht-erste', `rules: erste Regel ist \`${r.id}\` — zuerst erklärt die DSL ihre eigene Prüfpflicht (\`DSL_self_validation\`)`);
+    }
+    genutzteTrigger.add(r.on);
+    const t = trigger.get(r.on);
+    if (!t) add('unbekannter-trigger', `${wo}: on \`${r.on}\` steht nicht in \`triggers\``);
+    genutzteQuellen.add(r.check);
+    if (!quellen.has(r.check)) add('unbekannte-check-quelle', `${wo}: check \`${r.check}\` steht nicht in \`check_sources\``);
+    pruefeAssert(wo, r.assert, r.check);
+    pruefeQuelle(wo, r.source);
+    if (r.directive) abgedeckt.add(r.directive);
+    // Review-Befunde sind ausdrücklich KEIN D8-Fall (AGENTS.md D8, „Abgrenzung zur
+    // Review-Schleife"). Eine D8-Regel an diesem Trigger wäre genau die Verwechslung,
+    // die #11 ausgelöst hat.
+    if (r.directive === 'D8' && r.on === 'review_finding') {
+      add('d8-review-schleife', `${wo}: D8-Regel am Trigger \`review_finding\` — Review-Befunde an einem offenen PR sind kein D8-Fall (AGENTS.md D8, „Abgrenzung zur Review-Schleife"); sie gehören in die Review-Schleife von docs/workflow.md`);
+    }
+    if (t?.pipeline && !extern.regeln.has(r.id)) {
+      add('regel-ohne-pipeline-bezug', `${wo}: hängt am Pipeline-Trigger \`${r.on}\`, wird aber von keinem Schritt in workflow/pipeline.yaml referenziert — dann prüft sie niemand an der Stelle, an der sie greift`, 'warn');
+    }
+  }
+  if (regelListe.length === 0) {
+    add('selbstvalidierung-nicht-erste', 'rules: keine einzige Regel — `DSL_self_validation` fehlt');
+  }
+  const selbst = regelListe.find(r => r.id === 'DSL_self_validation');
+  if (selbst && (selbst.on !== 'workflow_change' || selbst.check !== 'ci_run')) {
+    add('selbstvalidierung-form', `rules/\`DSL_self_validation\`: erwartet \`on: workflow_change\` und \`check: ci_run\` (gefunden: \`${selbst.on}\`/\`${selbst.check}\`) — die Selbstprüfung hängt am CI-Lauf des ändernden PRs`);
+  }
+
+  for (const k of rules.documented_conventions ?? []) {
+    const wo = `documented_conventions/\`${k.id}\``;
+    if (regelIds.has(k.id)) add('doppelte-id', `${wo}: ID doppelt vergeben`);
+    regelIds.add(k.id);
+    pruefeQuelle(wo, k.source);
+    abgedeckt.add(k.directive);
+  }
+
+  for (let n = 1; n <= 8; n++) {
+    const d = `D${n}`;
+    if (!abgedeckt.has(d)) {
+      add('direktive-ohne-abdeckung', `\`${d}\` kommt weder als Regel noch als \`documented_conventions\`-Eintrag vor — jede Direktive ist entweder prüfbar oder ausdrücklich als Prosa-Konvention geführt`);
+    }
+  }
+
+  // Vokabeln, die niemand benutzt: kein Fehler, aber sie täuschen Umfang vor.
+  for (const id of fakten.keys()) {
+    if (!genutzteFakten.has(id) && !extern.fakten.has(id)) {
+      add('fakt-ungenutzt', `facts/\`${id}\`: kein \`assert\` und kein \`fact_check\` aus workflow/pipeline.yaml verlangt den Fakt`, 'warn');
+    }
+  }
+  for (const id of quellen.keys()) {
+    if (!genutzteQuellen.has(id)) add('check-quelle-ungenutzt', `check_sources/\`${id}\`: keine Regel führt \`check: ${id}\``, 'warn');
+  }
+  for (const id of trigger.keys()) {
+    if (!genutzteTrigger.has(id) && !extern.trigger.has(id)) {
+      add('trigger-ungenutzt', `triggers/\`${id}\`: keine Regel und kein Pipeline-Schritt hängt daran`, 'warn');
+    }
+  }
+
+  return { befunde, geprueft: regelListe.length + (rules.documented_conventions ?? []).length, regelIds };
+}
+
+// -------------------------------------------- Ebene 2e: Pipeline-Konsistenz (pipeline.yaml)
+//
+// Die Bedingungen sind strukturierte Felder statt freier Strings — nur deshalb lässt sich
+// prüfen, ob das Genannte existiert (Lektion R7 aus PR #45). Genau vier Formen, je eine pro
+// Eintrag; jede Referenz wird gegen roles.yaml, states.yaml bzw. rules.yaml aufgelöst.
+const CI_KONKLUSIONEN = ['success', 'failure', 'pending'];
+const BEDINGUNGSARTEN = ['label_check', 'actor_check', 'ci_check', 'fact_check'];
+
+export function pipelineKonsistenz(pipeline, ctx) {
+  const befunde = [];
+  const add = (code, message, level = 'error') => befunde.push({ code, message, level });
+  const {
+    rollen = new Map(), zustaende = new Map(), faktIds = new Set(), regelIds = new Set(),
+    uebergaenge = [], doneState = null, maxReviewLoops = null,
+  } = ctx ?? {};
+
+  const schritte = new Map();
+  for (const s of pipeline.steps ?? []) {
+    if (schritte.has(s.id)) add('doppelte-id', `steps: Schritt-ID \`${s.id}\` doppelt vergeben`);
+    schritte.set(s.id, s);
+  }
+  const rolleOk = r => r === 'human' || rollen.has(r);
+  const genutzteRegeln = new Set();
+  const genutzteFakten = new Set();
+  const genutzteTrigger = new Set();
+
+  const pruefeBedingung = (wo, b) => {
+    const schluessel = Object.keys(b ?? {});
+    const fremd = schluessel.filter(k => !BEDINGUNGSARTEN.includes(k));
+    if (fremd.length) {
+      add('unbekannte-bedingung', `${wo}: \`${fremd.join('`, `')}\` ist keine der vier Bedingungsformen (${BEDINGUNGSARTEN.map(a => `\`${a}\``).join(', ')})`);
+    }
+    const arten = BEDINGUNGSARTEN.filter(k => b?.[k] !== undefined);
+    if (arten.length === 0) { add('unbekannte-bedingung', `${wo}: Bedingung ohne erkennbare Form — freie Strings gibt es hier nicht`); return; }
+    if (arten.length > 1) { add('unbekannte-bedingung', `${wo}: ${arten.length} Bedingungsformen in einem Eintrag (\`${arten.join('`, `')}\`) — eine pro Eintrag, sonst ist die Verknüpfung ungesagt`); return; }
+    const art = arten[0];
+    const v = b[art];
+    if (art === 'label_check') {
+      const z = zustaende.get(v.state);
+      if (!z) add('unbekannter-zustand', `${wo}/label_check: \`${v.state}\` ist kein Zustand aus workflow/states.yaml`);
+      else if (!z.label) add('label-check-ohne-label', `${wo}/label_check: der Zustand \`${v.state}\` trägt kein Label — ein Label-Check darauf prüft nichts`);
+    } else if (art === 'actor_check') {
+      if (!rolleOk(v.role)) add('unbekannte-rolle', `${wo}/actor_check: \`${v.role}\` ist keine Rolle aus workflow/roles.yaml und nicht \`human\``);
+    } else if (art === 'ci_check') {
+      if (!CI_KONKLUSIONEN.includes(v.conclusion)) {
+        add('unbekannte-ci-konklusion', `${wo}/ci_check: \`${v.conclusion}\` — erlaubt sind ${CI_KONKLUSIONEN.map(c => `\`${c}\``).join(', ')}`);
+      }
+    } else {
+      genutzteFakten.add(v.fact);
+      if (!faktIds.has(v.fact)) {
+        add('unbekannter-fakt', `${wo}/fact_check: \`${v.fact}\` ist kein Fakt aus workflow/states.yaml oder workflow/rules.yaml`);
+      }
+      if (typeof v.expected !== 'boolean') {
+        add('fact-check-erwartung', `${wo}/fact_check: \`expected\` ist \`${v.expected}\` — erwartet wird \`true\` oder \`false\``);
+      }
+    }
+  };
+
+  if (!schritte.has(pipeline.first)) add('unbekannter-schritt', `first: \`${pipeline.first}\` ist kein Schritt`);
+
+  for (const s of pipeline.steps ?? []) {
+    const wo = `steps/\`${s.id}\``;
+    if (!rolleOk(s.actor)) {
+      add('unbekannte-rolle', `${wo}: actor \`${s.actor}\` ist keine Rolle aus workflow/roles.yaml und nicht \`human\``);
+    }
+    const rolle = rollen.get(s.actor);
+    if (s.delegated) {
+      if (s.actor === 'human') {
+        add('delegation-an-mensch', `${wo}: \`delegated: true\`, actor ist aber \`human\` — ein Mensch bekommt kein \`--max-turns\``);
+      } else if (rolle && (!rolle.delegated || !rolle.budget)) {
+        add('schritt-ohne-budget', `${wo}: der Schritt ist ein delegierter Run, \`${s.actor}\` trägt in workflow/roles.yaml aber kein \`budget\` mit \`delegated: true\` (D2 — Delegationen immer mit \`--max-turns\`)`);
+      }
+    }
+    for (const feld of ['state_before', 'state_after']) {
+      if (!zustaende.has(s[feld])) add('unbekannter-zustand', `${wo}: ${feld} \`${s[feld]}\` ist kein Zustand aus workflow/states.yaml`);
+    }
+    // D1: In den Endzustand führt kein Agenten-Schritt.
+    if (doneState && s.state_after === doneState && s.actor !== 'human') {
+      add('d1-merge-schritt', `${wo}: führt nach \`${doneState}\`, actor ist aber \`${s.actor}\` — der Merge gehört Martin (D1 — Merge nur durch Martin)`);
+    }
+    // Ein Zustandswechsel braucht einen Übergang, und dessen Owner ist der Akteur des Schritts.
+    if (s.state_before !== s.state_after && zustaende.has(s.state_before) && zustaende.has(s.state_after)) {
+      const passend = uebergaenge.filter(t => t.from === s.state_before && t.to === s.state_after);
+      if (passend.length === 0) {
+        add('uebergang-fehlt', `${wo}: \`${s.state_before}\` → \`${s.state_after}\`, workflow/states.yaml kennt aber keinen solchen Übergang`);
+      } else if (!passend.some(t => t.owner === s.actor || t.owner_fallback === s.actor || t.owner === 'any_agent')) {
+        add('uebergang-owner', `${wo}: der Übergang \`${passend.map(t => t.id).join('`/`')}\` gehört \`${passend.map(t => t.owner).join('`/`')}\`, der Schritt aber \`${s.actor}\``);
+      }
+    }
+    for (const [i, b] of (s.preconditions ?? []).entries()) pruefeBedingung(`${wo}/preconditions[${i}]`, b);
+    for (const [i, b] of (s.postconditions ?? []).entries()) pruefeBedingung(`${wo}/postconditions[${i}]`, b);
+    for (const r of s.rules ?? []) {
+      genutzteRegeln.add(r);
+      if (!regelIds.has(r)) add('unbekannte-regel', `${wo}: rules nennt \`${r}\` — keine Regel aus workflow/rules.yaml`);
+    }
+    for (const n of s.next ?? []) {
+      if (!schritte.has(n)) { add('unbekannter-schritt', `${wo}: next \`${n}\` ist kein Schritt`); continue; }
+      const ziel = schritte.get(n);
+      if (ziel.state_before !== s.state_after) {
+        add('schritt-zustandsbruch', `${wo}: endet in \`${s.state_after}\`, der Folgeschritt \`${n}\` setzt aber \`${ziel.state_before}\` voraus`);
+      }
+    }
+    if (s.loop) {
+      if (!schritte.has(s.loop.to)) add('unbekannter-schritt', `${wo}/loop: to \`${s.loop.to}\` ist kein Schritt`);
+      const t = uebergaenge.find(x => x.id === s.loop.transition);
+      if (!t) {
+        add('unbekannter-uebergang', `${wo}/loop: transition \`${s.loop.transition}\` steht nicht in workflow/states.yaml`);
+      } else if (t.loop !== true) {
+        add('schleife-nicht-markiert', `${wo}/loop: \`${t.id}\` ist in workflow/states.yaml nicht \`loop: true\` — die Schleife wäre nicht zählbar`);
+      }
+      if (maxReviewLoops !== null && s.loop.max !== maxReviewLoops) {
+        add('schleifen-limit', `${wo}/loop: max ${s.loop.max}, workflow/states.yaml nennt \`max_review_loops: ${maxReviewLoops}\` — zwei Grenzen für dieselbe Schleife`);
+      }
+      if (s.loop.trigger) genutzteTrigger.add(s.loop.trigger);
+    }
+  }
+
+  // Erreichbarkeit ab `first`, Schleifenkanten eingeschlossen.
+  const erreicht = new Set(schritte.has(pipeline.first) ? [pipeline.first] : []);
+  for (let geaendert = true; geaendert;) {
+    geaendert = false;
+    for (const s of pipeline.steps ?? []) {
+      if (!erreicht.has(s.id)) continue;
+      for (const n of [...(s.next ?? []), ...(s.loop ? [s.loop.to] : [])]) {
+        if (schritte.has(n) && !erreicht.has(n)) { erreicht.add(n); geaendert = true; }
+      }
+    }
+  }
+  for (const s of pipeline.steps ?? []) {
+    if (!erreicht.has(s.id)) add('schritt-unerreichbar', `steps/\`${s.id}\`: von \`${pipeline.first}\` aus nicht erreichbar`);
+  }
+
+  return { befunde, geprueft: (pipeline.steps ?? []).length, genutzteRegeln, genutzteFakten, genutzteTrigger };
+}
+
 // --------------------------------------------------------------------------------- Selbsttest
 
 // Verstoßformen, die die Analyse hart melden muss. Die ersten drei sind die historischen Fälle
@@ -699,6 +1047,211 @@ const D2_FAELLE = [
   },
 ];
 
+// Fälle für die Regel-Konsistenz (Ebene 2d) und die Pipeline-Konsistenz (Ebene 2e). Wie beim
+// D2-Abgleich läuft der Selbsttest gegen Miniaturen, nicht gegen den echten Stand der Dateien
+// — der ist der eigentliche Lauf. Verglichen wird die **vollständige** Befundliste, damit ein
+// zusätzlicher Fehlalarm im selben Fall auffällt (M2 zu PR #48).
+const klon = o => JSON.parse(JSON.stringify(o));
+
+const MINI_UEBERSCHRIFTEN = new Set([
+  'D1 — Merge nur durch Martin', 'D2 — Budget-Guards', 'D3 — Kleine PRs', 'D4 — Akzeptanzkriterien',
+  'D5 — Doku bleibt im Repo', 'D6 — Keine eigene Infrastruktur', 'D7 — Abgebrochener Coder-Run',
+  'D8 — Abhängige Issues',
+]);
+const MINI_UEBERSCHRIFT_LISTE = [...MINI_UEBERSCHRIFTEN];
+// Eine Prosa-Konvention je Direktive — die Abdeckungsprüfung verlangt D1–D8 vollständig.
+const miniKonvention = n => ({
+  id: `D${n}_konvention`, directive: `D${n}`,
+  convention: 'Prosa-Konvention', why_not_checkable: 'kein beobachtbares Artefakt',
+  source: { agents_md: MINI_UEBERSCHRIFT_LISTE[n - 1] },
+});
+const MINI_REGELN = {
+  version: 1, source: 'AGENTS.md — Direktiven',
+  check_sources: [
+    { id: 'gh_api', description: 'GitHub-API', infrastructure: 'github' },
+    { id: 'ci_run', description: 'CI-Job', infrastructure: 'github' },
+  ],
+  triggers: [
+    { id: 'workflow_change', description: 'PR ändert workflow/', observable_via: 'ci_run', pipeline: false },
+    { id: 'pr_merged', description: 'PR gemergt', observable_via: 'gh_api', pipeline: true },
+    { id: 'review_finding', description: 'Review-Befund am offenen PR', observable_via: 'gh_api', pipeline: true },
+  ],
+  facts: [
+    { id: 'dsl_validation_exit_zero', description: 'CI-Job grün', check: 'ci_run', command: 'gh run view <id>' },
+    { id: 'pr_merge_actor_role', description: 'Rolle des Merge-Actors', check: 'gh_api', command: 'gh pr view <n> --json mergedBy' },
+  ],
+  rules: [
+    {
+      id: 'DSL_self_validation', on: 'workflow_change',
+      assert: { fact: 'dsl_validation_exit_zero', operator: 'is_true' },
+      check: 'ci_run', remedy: 'Befunde beheben',
+      source: { doc: 'docs/validate-setup.md — Einsatz in der Pipeline' },
+    },
+    {
+      id: 'D1_merge_by_human', directive: 'D1', on: 'pr_merged',
+      assert: { fact: 'pr_merge_actor_role', operator: 'equals', value: 'human' },
+      check: 'gh_api', remedy: 'eskalieren',
+      source: { agents_md: 'D1 — Merge nur durch Martin' },
+    },
+  ],
+  documented_conventions: [2, 3, 4, 5, 6, 7, 8].map(miniKonvention),
+};
+// `review_finding` hängt in der Miniatur an der Pipeline-Schleife, `D1_merge_by_human` am
+// Merge-Schritt — beides steht in pipeline.yaml, nicht in rules.yaml.
+const MINI_REGEL_CTX = {
+  fremdeFaktIds: new Set(['ci_green']),
+  ueberschriften: MINI_UEBERSCHRIFTEN,
+  dateiExistiert: d => d === 'docs/validate-setup.md',
+  genutztAnderswo: { fakten: new Set(), trigger: new Set(['review_finding']), regeln: new Set(['D1_merge_by_human']) },
+};
+const regelnMit = fn => { const r = klon(MINI_REGELN); fn(r); return r; };
+
+const REGEL_FAELLE = [
+  { id: 'Regeln: Miniatur ohne Befund', dsl: MINI_REGELN, codes: [] },
+  // --- Vokabular: Trigger, Check-Quelle, Fakt
+  // Ein Vokabular-Fehler zieht die passende „ungenutzt"-Warnung nach sich: Wer `on` verbiegt,
+  // lässt den bisherigen Trigger unbenutzt zurück. Die Warnung steht deshalb mit in der
+  // Erwartung — der Fall prüft die vollständige Befundliste, nicht nur den Hauptbefund.
+  { id: 'Regeln: unbekannter Trigger', dsl: regelnMit(r => { r.rules[1].on = 'nie_passiert'; }), codes: ['unbekannter-trigger', 'trigger-ungenutzt'] },
+  { id: 'Regeln: check ohne Quelle im Vokabular', dsl: regelnMit(r => { r.rules[1].check = 'jira'; }), codes: ['unbekannte-check-quelle', 'fakt-quelle-abweichend', 'check-quelle-ungenutzt'] },
+  { id: 'Regeln: Fakt verweist auf unbekannte Quelle', dsl: regelnMit(r => { r.facts[1].check = 'jira'; }), codes: ['unbekannte-check-quelle', 'fakt-quelle-abweichend'] },
+  { id: 'Regeln: Trigger mit unbekanntem observable_via', dsl: regelnMit(r => { r.triggers[1].observable_via = 'jira'; }), codes: ['unbekannte-check-quelle'] },
+  { id: 'Regeln: assert über erfundenen Fakt', dsl: regelnMit(r => { r.rules[1].assert.fact = 'erfunden'; }), codes: ['unbekannter-fakt', 'fakt-ungenutzt'] },
+  { id: 'Regeln: Fakt aus anderer Quelle als die Regel', dsl: regelnMit(r => { r.rules[1].check = 'ci_run'; }), codes: ['fakt-quelle-abweichend', 'check-quelle-ungenutzt'] },
+  { id: 'Regeln: Fakt-ID kollidiert mit states.yaml', dsl: regelnMit(r => { r.facts[1].id = 'ci_green'; r.rules[1].assert.fact = 'ci_green'; }), codes: ['fakt-id-kollision'] },
+  // --- assert-Form und Operanden
+  { id: 'Regeln: is_true mit Operand', dsl: regelnMit(r => { r.rules[0].assert.value = 'x'; }), codes: ['assert-operand'] },
+  { id: 'Regeln: equals ohne Operand', dsl: regelnMit(r => { delete r.rules[1].assert.value; }), codes: ['assert-operand'] },
+  { id: 'Regeln: unbekannter Operator', dsl: regelnMit(r => { r.rules[1].assert.operator = 'ist_vielleicht'; }), codes: ['unbekannter-operator'] },
+  { id: 'Regeln: assert ohne fact und ohne Verknüpfung', dsl: regelnMit(r => { r.rules[1].assert = { operator: 'is_true' }; }), codes: ['assert-form', 'fakt-ungenutzt'] },
+  { id: 'Regeln: all_of mit einem Zweig', dsl: regelnMit(r => { r.rules[1].assert = { all_of: [{ fact: 'pr_merge_actor_role', operator: 'is_true' }] }; }), codes: ['assert-form'] },
+  { id: 'Regeln: all_of neben eigenem fact', dsl: regelnMit(r => { r.rules[1].assert = { fact: 'pr_merge_actor_role', operator: 'is_true', all_of: [{ fact: 'pr_merge_actor_role', operator: 'is_true' }, { fact: 'pr_merge_actor_role', operator: 'is_false' }] }; }), codes: ['assert-form', 'fakt-ungenutzt'] },
+  { id: 'Regeln Gegenrichtung: all_of mit zwei Blättern', dsl: regelnMit(r => { r.rules[1].assert = { all_of: [{ fact: 'pr_merge_actor_role', operator: 'equals', value: 'human' }, { fact: 'pr_merge_actor_role', operator: 'is_true' }] }; }), codes: [] },
+  { id: 'Regeln: all_of mit Blatt aus fremder Quelle', dsl: regelnMit(r => { r.rules[1].assert = { all_of: [{ fact: 'pr_merge_actor_role', operator: 'is_true' }, { fact: 'dsl_validation_exit_zero', operator: 'is_true' }] }; }), codes: ['fakt-quelle-abweichend'] },
+  // --- Querverweis (source)
+  { id: 'Regeln: source ohne Belegstelle', dsl: regelnMit(r => { r.rules[1].source = {}; }), codes: ['quelle-fehlt'] },
+  { id: 'Regeln: source mit zwei Belegstellen', dsl: regelnMit(r => { r.rules[1].source = { agents_md: 'D1 — Merge nur durch Martin', doc: 'docs/validate-setup.md' }; }), codes: ['quelle-doppelt'] },
+  { id: 'Regeln: Überschrift gibt es in AGENTS.md nicht', dsl: regelnMit(r => { r.rules[1].source = { agents_md: 'D9 — Gibt es nicht' }; }), codes: ['ueberschrift-fehlt'] },
+  { id: 'Regeln: Überschrift mit Satzpunkt zitiert', dsl: regelnMit(r => { r.rules[1].source = { agents_md: 'D1 — Merge nur durch Martin:' }; }), codes: ['ueberschrift-satzpunkt'] },
+  { id: 'Regeln: source.doc nennt fehlende Datei', dsl: regelnMit(r => { r.rules[0].source = { doc: 'docs/gibt-es-nicht.md — Stelle' }; }), codes: ['quelldatei-fehlt'] },
+  { id: 'Regeln Gegenrichtung: Überschrift ohne Auflösung (ueberschriften = null)', dsl: regelnMit(r => { r.rules[1].source = { agents_md: 'D9 — Gibt es nicht' }; }), ctx: { ...MINI_REGEL_CTX, ueberschriften: null }, codes: [] },
+  // --- Abdeckung D1–D8
+  { id: 'Regeln: Direktive ohne Abdeckung', dsl: regelnMit(r => { r.documented_conventions = r.documented_conventions.filter(k => k.directive !== 'D5'); }), codes: ['direktive-ohne-abdeckung'] },
+  {
+    id: 'Regeln Gegenrichtung: Direktive als Regel statt als Konvention abgedeckt',
+    dsl: regelnMit(r => {
+      r.documented_conventions = r.documented_conventions.filter(k => k.directive !== 'D5');
+      r.rules.push({ id: 'D5_x', directive: 'D5', on: 'workflow_change', assert: { fact: 'dsl_validation_exit_zero', operator: 'is_true' }, check: 'ci_run', remedy: 'committen', source: { agents_md: 'D5 — Doku bleibt im Repo' } });
+    }),
+    codes: [],
+  },
+  // --- DSL_self_validation
+  { id: 'Regeln: DSL_self_validation nicht die erste Regel', dsl: regelnMit(r => { r.rules.reverse(); }), codes: ['selbstvalidierung-nicht-erste'] },
+  { id: 'Regeln: DSL_self_validation an der falschen Quelle', dsl: regelnMit(r => { r.rules[0].check = 'gh_api'; }), codes: ['selbstvalidierung-form', 'fakt-quelle-abweichend', 'check-quelle-ungenutzt'] },
+  // --- D8 vs. Review-Schleife
+  {
+    id: 'Regeln: D8-Regel am Trigger review_finding',
+    dsl: regelnMit(r => { r.rules.push({ id: 'D8_falsch', directive: 'D8', on: 'review_finding', assert: { fact: 'pr_merge_actor_role', operator: 'is_true' }, check: 'gh_api', remedy: 'x', source: { agents_md: 'D8 — Abhängige Issues' } }); }),
+    codes: ['d8-review-schleife', 'regel-ohne-pipeline-bezug'],
+  },
+  {
+    id: 'Regeln Gegenrichtung: Nicht-D8-Regel am Trigger review_finding',
+    dsl: regelnMit(r => { r.rules.push({ id: 'D4_ok', directive: 'D4', on: 'review_finding', assert: { fact: 'pr_merge_actor_role', operator: 'is_true' }, check: 'gh_api', remedy: 'x', source: { agents_md: 'D4 — Akzeptanzkriterien' } }); }),
+    codes: ['regel-ohne-pipeline-bezug'],
+  },
+  // --- D6: Infrastruktur der Check-Quellen
+  { id: 'Regeln: fremde Infrastruktur in check_sources', dsl: regelnMit(r => { r.check_sources[0].infrastructure = 'jira_cloud'; }), codes: ['fremde-infrastruktur'] },
+  { id: 'Regeln Gegenrichtung: local ist erlaubt', dsl: regelnMit(r => { r.check_sources[0].infrastructure = 'local'; }), codes: [] },
+  // --- IDs und ungenutzte Vokabeln (Warnungen)
+  { id: 'Regeln: doppelte Regel-ID', dsl: regelnMit(r => { r.rules[1].id = 'DSL_self_validation'; }), codes: ['doppelte-id', 'regel-ohne-pipeline-bezug'] },
+  { id: 'Regeln: ungenutzter Fakt', dsl: regelnMit(r => { r.facts.push({ id: 'nie_gefragt', description: 'x', check: 'gh_api', command: 'gh pr view <n>' }); }), codes: ['fakt-ungenutzt'] },
+  { id: 'Regeln: ungenutzte Check-Quelle', dsl: regelnMit(r => { r.check_sources.push({ id: 'git_state', description: 'Repo-Zustand', infrastructure: 'local' }); }), codes: ['check-quelle-ungenutzt'] },
+  { id: 'Regeln: Pipeline-Regel ohne Schritt-Bezug', dsl: MINI_REGELN, ctx: { ...MINI_REGEL_CTX, genutztAnderswo: { trigger: new Set(['review_finding']) } }, codes: ['regel-ohne-pipeline-bezug'] },
+  { id: 'Regeln: ungenutzter Trigger', dsl: MINI_REGELN, ctx: { ...MINI_REGEL_CTX, genutztAnderswo: { regeln: new Set(['D1_merge_by_human']) } }, codes: ['trigger-ungenutzt'] },
+];
+
+const MINI_PIPELINE_CTX = {
+  rollen: new Map([
+    ['coder', { delegated: true, budget: { max_turns: 30 } }],
+    ['reviewer', { delegated: true, budget: { max_turns: 15 } }],
+    ['lead', { delegated: true, budget: { max_turns: 15 } }],
+  ]),
+  zustaende: new Map([
+    ['in_progress', { label: 'agent:in-progress' }],
+    ['review', { label: 'agent:review' }],
+    ['done', {}],
+  ]),
+  faktIds: new Set(['draft_pr_open', 'merged']),
+  regelIds: new Set(['D1_merge_by_human', 'D3_one_issue_per_pr']),
+  uebergaenge: [
+    { id: 'hand_to_review', from: 'in_progress', to: 'review', owner: 'coder', owner_fallback: 'lead' },
+    { id: 'review_finding_fix', from: 'review', to: 'in_progress', owner: 'lead', loop: true },
+    { id: 'merge', from: 'review', to: 'done', owner: 'human' },
+  ],
+  doneState: 'done',
+  maxReviewLoops: 2,
+};
+const MINI_PIPELINE = {
+  version: 1, source: 'AGENTS.md — Pipeline', first: 'coder_run',
+  steps: [
+    {
+      id: 'coder_run', name: 'Coder-Run', actor: 'coder', workdir: 'worktree', delegated: true,
+      description: 'Implementierung, Draft-PR', state_before: 'in_progress', state_after: 'review',
+      preconditions: [{ label_check: { state: 'in_progress', present: true } }, { actor_check: { role: 'coder' } }],
+      postconditions: [{ fact_check: { fact: 'draft_pr_open', expected: true } }, { ci_check: { conclusion: 'success' } }],
+      rules: ['D3_one_issue_per_pr'], next: ['merge'],
+    },
+    {
+      id: 'merge', name: 'Merge', actor: 'human', workdir: 'n/a', delegated: false,
+      description: 'Martin merged', state_before: 'review', state_after: 'done',
+      preconditions: [{ actor_check: { role: 'human' } }],
+      postconditions: [{ fact_check: { fact: 'merged', expected: true } }],
+      rules: ['D1_merge_by_human'], next: [],
+    },
+  ],
+};
+const pipelineMit = fn => { const p = klon(MINI_PIPELINE); fn(p); return p; };
+const MINI_SCHLEIFE = { to: 'coder_run', transition: 'review_finding_fix', trigger: 'review_finding', max: 2 };
+
+const PIPELINE_FAELLE = [
+  { id: 'Pipeline: Miniatur ohne Befund', dsl: MINI_PIPELINE, codes: [] },
+  // --- Schritt-Referenzen und Erreichbarkeit
+  { id: 'Pipeline: first ist kein Schritt', dsl: pipelineMit(p => { p.first = 'gibt_es_nicht'; }), codes: ['unbekannter-schritt', 'schritt-unerreichbar', 'schritt-unerreichbar'] },
+  { id: 'Pipeline: next ist kein Schritt', dsl: pipelineMit(p => { p.steps[0].next = ['gibt_es_nicht']; }), codes: ['unbekannter-schritt', 'schritt-unerreichbar'] },
+  {
+    id: 'Pipeline: unerreichbarer Schritt',
+    dsl: pipelineMit(p => { p.steps.push({ id: 'waise', name: 'Waise', actor: 'lead', workdir: 'worktree', delegated: false, description: 'x', state_before: 'review', state_after: 'review', preconditions: [], postconditions: [], next: [] }); }),
+    codes: ['schritt-unerreichbar'],
+  },
+  { id: 'Pipeline: doppelte Schritt-ID', dsl: pipelineMit(p => { p.steps.push(klon(p.steps[1])); }), codes: ['doppelte-id'] },
+  { id: 'Pipeline: Zustandsbruch zwischen zwei Schritten', dsl: pipelineMit(p => { p.steps[1].state_before = 'in_progress'; }), codes: ['schritt-zustandsbruch', 'uebergang-fehlt'] },
+  // --- Bindung an die Zustandsmaschine
+  { id: 'Pipeline: Zustandswechsel ohne Übergang', dsl: MINI_PIPELINE, ctx: { ...MINI_PIPELINE_CTX, uebergaenge: MINI_PIPELINE_CTX.uebergaenge.filter(t => t.id !== 'hand_to_review') }, codes: ['uebergang-fehlt'] },
+  { id: 'Pipeline: Übergang gehört einer anderen Rolle', dsl: pipelineMit(p => { p.steps[0].actor = 'reviewer'; }), codes: ['uebergang-owner'] },
+  { id: 'Pipeline Gegenrichtung: owner_fallback zählt als Owner', dsl: pipelineMit(p => { p.steps[0].actor = 'lead'; p.steps[0].preconditions[1].actor_check.role = 'lead'; }), codes: [] },
+  { id: 'Pipeline: Agent führt in den Endzustand (D1)', dsl: pipelineMit(p => { p.steps[1].actor = 'lead'; p.steps[1].preconditions[0].actor_check.role = 'lead'; }), codes: ['d1-merge-schritt', 'uebergang-owner'] },
+  { id: 'Pipeline: unbekannter Zustand am Schritt', dsl: pipelineMit(p => { p.steps[0].state_before = 'nirgendwo'; }), codes: ['unbekannter-zustand'] },
+  // --- strukturierte Bedingungen
+  { id: 'Pipeline: label_check auf unbekannten Zustand', dsl: pipelineMit(p => { p.steps[0].preconditions[0].label_check.state = 'nirgendwo'; }), codes: ['unbekannter-zustand'] },
+  { id: 'Pipeline: label_check auf Zustand ohne Label', dsl: pipelineMit(p => { p.steps[0].preconditions[0].label_check.state = 'done'; }), codes: ['label-check-ohne-label'] },
+  { id: 'Pipeline: actor_check auf unbekannte Rolle', dsl: pipelineMit(p => { p.steps[0].preconditions[1].actor_check.role = 'hacker'; }), codes: ['unbekannte-rolle'] },
+  { id: 'Pipeline: fact_check auf erfundenen Fakt', dsl: pipelineMit(p => { p.steps[0].postconditions[0].fact_check.fact = 'erfunden'; }), codes: ['unbekannter-fakt'] },
+  { id: 'Pipeline: fact_check ohne booleschen Erwartungswert', dsl: pipelineMit(p => { p.steps[0].postconditions[0].fact_check.expected = 'ja'; }), codes: ['fact-check-erwartung'] },
+  { id: 'Pipeline: ci_check mit unbekannter Konklusion', dsl: pipelineMit(p => { p.steps[0].postconditions[1].ci_check.conclusion = 'grün'; }), codes: ['unbekannte-ci-konklusion'] },
+  { id: 'Pipeline: freier Schlüssel statt Bedingungsform', dsl: pipelineMit(p => { p.steps[0].preconditions.push({ stimmung: 'gut' }); }), codes: ['unbekannte-bedingung', 'unbekannte-bedingung'] },
+  { id: 'Pipeline: zwei Bedingungsformen in einem Eintrag', dsl: pipelineMit(p => { p.steps[0].preconditions[0].actor_check = { role: 'coder' }; }), codes: ['unbekannte-bedingung'] },
+  // --- Rollen, Budget, Regel-Referenzen
+  { id: 'Pipeline: actor ist keine Rolle', dsl: pipelineMit(p => { p.steps[0].actor = 'hacker'; }), codes: ['unbekannte-rolle', 'uebergang-owner'] },
+  { id: 'Pipeline: delegierter Schritt ohne Budget der Rolle', dsl: MINI_PIPELINE, ctx: { ...MINI_PIPELINE_CTX, rollen: new Map([...MINI_PIPELINE_CTX.rollen, ['coder', { delegated: true }]]) }, codes: ['schritt-ohne-budget'] },
+  { id: 'Pipeline: Delegation an einen Menschen', dsl: pipelineMit(p => { p.steps[1].delegated = true; }), codes: ['delegation-an-mensch'] },
+  { id: 'Pipeline: rules nennt eine unbekannte Regel', dsl: pipelineMit(p => { p.steps[0].rules = ['D9_gibt_es_nicht']; }), codes: ['unbekannte-regel'] },
+  // --- Review-Schleife
+  { id: 'Pipeline Gegenrichtung: Schleife passt zu states.yaml', dsl: pipelineMit(p => { p.steps[0].loop = klon(MINI_SCHLEIFE); }), codes: [] },
+  { id: 'Pipeline: Schleifenlimit weicht von max_review_loops ab', dsl: pipelineMit(p => { p.steps[0].loop = { ...klon(MINI_SCHLEIFE), max: 3 }; }), codes: ['schleifen-limit'] },
+  { id: 'Pipeline: Schleife nennt unbekannten Übergang', dsl: pipelineMit(p => { p.steps[0].loop = { ...klon(MINI_SCHLEIFE), transition: 'gibt_es_nicht' }; }), codes: ['unbekannter-uebergang'] },
+  { id: 'Pipeline: Schleifenübergang nicht als loop markiert', dsl: pipelineMit(p => { p.steps[0].loop = { ...klon(MINI_SCHLEIFE), transition: 'merge' }; }), codes: ['schleife-nicht-markiert'] },
+];
+
 // `verbotsformen` kommt aus roles.yaml (R2). Ohne die Datei — `--selftest` ohne Setup — laufen
 // die übrigen Fälle weiter und die Subsumptionsfälle werden als übersprungen ausgewiesen.
 function runSelftest(verbotsformen) {
@@ -733,6 +1286,19 @@ function runSelftest(verbotsformen) {
     const codes = d2Abgleich(f.md, f.roles ?? D2_MINI_ROLLEN).befunde.map(b => b.code).sort();
     const ok = codes.length === erwartet.length && erwartet.every((c, i) => c === codes[i]);
     fall(f.id, f.md, erwartet.join(', ') || 'kein Befund', codes, ok, 'd2-abgleich-fall-nicht-gefangen');
+  }
+  // Ebene 2d/2e gegen die Miniaturen. `entry` ist hier der Fallname statt einer Freigabeform —
+  // die geprüfte Eingabe ist ein ganzes DSL-Dokument und gehört nicht in eine Zeile Ausgabe.
+  for (const [faelle, fn, ctx, code] of [
+    [REGEL_FAELLE, regelKonsistenz, MINI_REGEL_CTX, 'regel-konsistenz-fall-nicht-gefangen'],
+    [PIPELINE_FAELLE, pipelineKonsistenz, MINI_PIPELINE_CTX, 'pipeline-konsistenz-fall-nicht-gefangen'],
+  ]) {
+    for (const f of faelle) {
+      const erwartet = [...f.codes].sort();
+      const codes = fn(f.dsl, f.ctx ?? ctx).befunde.map(b => b.code).sort();
+      const ok = codes.length === erwartet.length && erwartet.every((c, i) => c === codes[i]);
+      fall(f.id, f.id, erwartet.join(', ') || 'kein Befund', codes, ok, code);
+    }
   }
   return ergebnis;
 }
@@ -915,6 +1481,133 @@ const statesSchema = {
   },
 };
 
+// Schemata für rules.yaml und pipeline.yaml. Bewusst locker, wo Ebene 2d/2e semantisch prüft:
+// `infrastructure`, `check`, `on`, `operator` und `conclusion` stehen hier als freie Strings,
+// damit der Befund aus der Konsistenzprüfung kommt (mit Begründung und Selbsttest-Fall) und
+// nicht als nackter Enum-Fehler aus ajv.
+const nichtLeer = { type: 'string', minLength: 1 };
+const dslId = { type: 'string', pattern: '^[a-z][a-z0-9_]*$' };
+const regelId = { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9_]*$' };
+const direktive = { type: 'string', pattern: '^D[1-8]$' };
+const quelleSchema = {
+  type: 'object', additionalProperties: false,
+  properties: { agents_md: nichtLeer, doc: nichtLeer },
+};
+const assertBlatt = {
+  type: 'object', additionalProperties: false,
+  properties: { fact: nichtLeer, operator: nichtLeer, value: {}, values: { type: 'array', minItems: 1 } },
+};
+const assertSchema = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    fact: nichtLeer, operator: nichtLeer, value: {}, values: { type: 'array', minItems: 1 },
+    all_of: { type: 'array', minItems: 1, items: assertBlatt },
+    any_of: { type: 'array', minItems: 1, items: assertBlatt },
+  },
+};
+
+const rulesSchema = {
+  type: 'object', additionalProperties: false,
+  required: ['version', 'source', 'check_sources', 'triggers', 'facts', 'rules', 'documented_conventions'],
+  properties: {
+    version: { const: 1 },
+    source: nichtLeer,
+    check_sources: {
+      type: 'array', minItems: 1,
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['id', 'description', 'infrastructure'],
+        properties: { id: dslId, description: nichtLeer, infrastructure: nichtLeer },
+      },
+    },
+    triggers: {
+      type: 'array', minItems: 1,
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['id', 'description', 'observable_via', 'pipeline'],
+        properties: { id: dslId, description: nichtLeer, observable_via: nichtLeer, pipeline: { type: 'boolean' } },
+      },
+    },
+    facts: {
+      type: 'array', minItems: 1,
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['id', 'description', 'check', 'command'],
+        // `command` ist Pflicht: Ohne den Befehl, mit dem sich der Fakt ablesen lässt, wäre
+        // „beobachtbar" eine Behauptung (Spec § 2, keine Selbstauskunft).
+        properties: { id: dslId, description: nichtLeer, check: nichtLeer, command: nichtLeer },
+      },
+    },
+    rules: {
+      type: 'array', minItems: 1,
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['id', 'on', 'assert', 'check', 'remedy', 'source'],
+        properties: {
+          id: regelId, directive: direktive, on: nichtLeer, assert: assertSchema,
+          check: nichtLeer, remedy: nichtLeer, source: quelleSchema,
+        },
+      },
+    },
+    documented_conventions: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['id', 'directive', 'convention', 'why_not_checkable', 'source'],
+        properties: {
+          id: regelId, directive: direktive, convention: nichtLeer,
+          why_not_checkable: nichtLeer, source: quelleSchema,
+        },
+      },
+    },
+  },
+};
+
+// Bedingungen: die vier Formen streng typisiert, unbekannte Schlüssel absichtlich erlaubt —
+// sie meldet Ebene 2e als `unbekannte-bedingung` samt Aufzählung der zulässigen Formen.
+const bedingungSchema = {
+  type: 'object', minProperties: 1, additionalProperties: true,
+  properties: {
+    label_check: { type: 'object', additionalProperties: false, required: ['state', 'present'], properties: { state: nichtLeer, present: { type: 'boolean' } } },
+    actor_check: { type: 'object', additionalProperties: false, required: ['role'], properties: { role: nichtLeer } },
+    ci_check: { type: 'object', additionalProperties: false, required: ['conclusion'], properties: { conclusion: nichtLeer } },
+    fact_check: { type: 'object', additionalProperties: false, required: ['fact', 'expected'], properties: { fact: nichtLeer, expected: {} } },
+  },
+};
+
+const pipelineSchema = {
+  type: 'object', additionalProperties: false,
+  required: ['version', 'source', 'first', 'steps'],
+  properties: {
+    version: { const: 1 },
+    source: nichtLeer,
+    first: nichtLeer,
+    steps: {
+      type: 'array', minItems: 1,
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['id', 'name', 'actor', 'workdir', 'delegated', 'description', 'state_before', 'state_after', 'preconditions', 'postconditions', 'next'],
+        properties: {
+          id: dslId, name: nichtLeer, actor: nichtLeer,
+          workdir: { enum: ['repo-root', 'worktree', 'n/a'] },
+          delegated: { type: 'boolean' },
+          description: nichtLeer,
+          state_before: nichtLeer, state_after: nichtLeer,
+          preconditions: { type: 'array', items: bedingungSchema },
+          postconditions: { type: 'array', items: bedingungSchema },
+          rules: { type: 'array', uniqueItems: true, items: nichtLeer },
+          next: { type: 'array', uniqueItems: true, items: nichtLeer },
+          loop: {
+            type: 'object', additionalProperties: false,
+            required: ['to', 'transition', 'max'],
+            properties: { to: nichtLeer, transition: nichtLeer, trigger: nichtLeer, max: { type: 'integer', minimum: 1 } },
+          },
+        },
+      },
+    },
+  },
+};
+
 // --------------------------------------------------------------------------------- Ablauf
 
 function ladeYaml(datei) {
@@ -972,8 +1665,12 @@ const { YAML, Ajv } = ladeModule();
 const ajv = new Ajv({ allErrors: true, strict: false });
 const roles = ladeYaml('workflow/roles.yaml');
 const states = ladeYaml('workflow/states.yaml');
+const rules = ladeYaml('workflow/rules.yaml');
+const pipeline = ladeYaml('workflow/pipeline.yaml');
 const rolesOk = pruefeSchema(ajv, rolesSchema, roles, 'workflow/roles.yaml');
 const statesOk = pruefeSchema(ajv, statesSchema, states, 'workflow/states.yaml');
+const regelnOk = pruefeSchema(ajv, rulesSchema, rules, 'workflow/rules.yaml');
+const pipelineOk = pruefeSchema(ajv, pipelineSchema, pipeline, 'workflow/pipeline.yaml');
 // Erst nach der Schemaprüfung: Eine kaputte `forbidden_tools`-Liste würde im Selbsttest
 // Folgefehler erzeugen, die vom eigentlichen Schema-Befund ablenken.
 if (!rolesOk) warn('selftest', 'verbotsliste-nicht-geladen', 'workflow/roles.yaml erfüllt das Schema nicht — die Subsumptionsfälle des Selbsttests wurden übersprungen');
@@ -1229,6 +1926,63 @@ if (statesOk) {
   if (new Set(labels).size !== labels.length) err(S, 'doppeltes-label', 'zwei Zustände tragen dasselbe Label');
 }
 
+// -------------------------------- Ebene 2d/2e: Regeln und Pipeline gegen ihre Vokabulare
+//
+// Reihenfolge: erst die Pipeline, dann die Regeln. Die Pipeline liefert, welche Fakten,
+// Trigger und Regeln sie referenziert — ohne das meldete Ebene 2d jede Regel, die an einem
+// Pipeline-Schritt hängt, als ungenutzt.
+let regelEintraege = 0;
+let pipelineSchritte = 0;
+// Das Fakten-Vokabular ist die Vereinigung beider Listen; die Kollisionsprüfung steht in
+// Ebene 2d (`fakt-id-kollision`), damit hier keine ID stumm die andere verdeckt.
+const alleFaktIds = new Set([
+  ...(statesOk ? states.facts.map(f => f.id) : []),
+  ...(regelnOk ? rules.facts.map(f => f.id) : []),
+]);
+const pipelineErgebnis = pipelineOk
+  ? pipelineKonsistenz(pipeline, {
+    rollen: new Map((rolesOk ? roles.roles : []).map(r => [r.id, r])),
+    zustaende: new Map((statesOk ? states.states : []).map(s => [s.id, s])),
+    faktIds: alleFaktIds,
+    regelIds: new Set(regelnOk ? rules.rules.map(r => r.id) : []),
+    uebergaenge: statesOk ? states.transitions : [],
+    doneState: statesOk ? states.invariants.done_state : null,
+    maxReviewLoops: statesOk ? states.invariants.max_review_loops : null,
+  })
+  : null;
+if (pipelineErgebnis) {
+  pipelineSchritte = pipelineErgebnis.geprueft;
+  for (const b of pipelineErgebnis.befunde) {
+    (b.level === 'warn' ? warn : err)('workflow/pipeline.yaml', b.code, b.message);
+  }
+}
+
+if (regelnOk) {
+  const R = 'workflow/rules.yaml';
+  // Die Querverweise werden gegen dieselbe Datei aufgelöst, die schon den D2-Prosa-Abgleich
+  // trägt (`d2_prose_check.file`, Default AGENTS.md) — eine zweite Angabe liefe auseinander.
+  const prosaDatei = (rolesOk ? roles.d2_prose_check.file : null) ?? 'AGENTS.md';
+  const prosaPfad = path.join(root, prosaDatei);
+  const ueberschriften = fs.existsSync(prosaPfad) ? fetteUeberschriften(fs.readFileSync(prosaPfad, 'utf8')) : null;
+  if (!ueberschriften) {
+    warn(R, 'ueberschriften-nicht-geladen', `${prosaDatei} nicht lesbar — die \`source.agents_md\`-Querverweise wurden nicht aufgelöst`);
+  }
+  const ergebnis = regelKonsistenz(rules, {
+    fremdeFaktIds: new Set(statesOk ? states.facts.map(f => f.id) : []),
+    ueberschriften,
+    dateiExistiert: d => fs.existsSync(path.join(root, d)),
+    genutztAnderswo: {
+      fakten: pipelineErgebnis?.genutzteFakten ?? new Set(),
+      trigger: pipelineErgebnis?.genutzteTrigger ?? new Set(),
+      regeln: pipelineErgebnis?.genutzteRegeln ?? new Set(),
+    },
+  });
+  regelEintraege = ergebnis.geprueft;
+  for (const b of ergebnis.befunde) {
+    (b.level === 'warn' ? warn : err)(R, b.code, b.message);
+  }
+}
+
 const ok = errors.length === 0;
 const report = {
   ok,
@@ -1239,6 +1993,8 @@ const report = {
     d2_prosa_formen: prosaFormen,
     zustaende: statesOk ? states.states.length : 0,
     uebergaenge: statesOk ? states.transitions.length : 0,
+    regeln: regelEintraege,
+    pipeline_schritte: pipelineSchritte,
   },
   selftest,
   errors,
@@ -1253,6 +2009,8 @@ if (jsonOut) {
   console.log(`  workflow/roles.yaml:  ${report.geprueft.rollen} Rollen, ${report.geprueft.tool_eintraege} Tool-Einträge`);
   console.log(`  ${rolesOk ? roles.d2_prose_check.file : 'AGENTS.md'} ↔ roles.yaml: ${report.geprueft.d2_prosa_formen} D2-Formen abgeglichen`);
   console.log(`  workflow/states.yaml: ${report.geprueft.zustaende} Zustände, ${report.geprueft.uebergaenge} Übergänge`);
+  console.log(`  workflow/rules.yaml:  ${report.geprueft.regeln} Regeln und dokumentierte Konventionen`);
+  console.log(`  workflow/pipeline.yaml: ${report.geprueft.pipeline_schritte} Schritte`);
   if (warnings.length) {
     console.log(`\nWarnungen (${warnings.length}):`);
     for (const w of warnings) console.log(`  [${w.code}] ${w.where}: ${w.message}`);

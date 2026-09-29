@@ -7,6 +7,8 @@ Der Workflow ist unter [`workflow/`](../workflow/) maschinenlesbar spezifiziert
 |---|---|---|
 | [`workflow/roles.yaml`](../workflow/roles.yaml) | Rollen, Tool-Allowlists (AGENTS.md D2), Forbidden-Patterns, Budgets, `merge_allowed` (D1) | Rollen-Tabelle in AGENTS.md |
 | [`workflow/states.yaml`](../workflow/states.yaml) | Label-Zustandsmaschine mit Owner je Übergang und Invarianten (`max_review_loops`, `done_requires`) | Label-Tabelle in AGENTS.md |
+| [`workflow/rules.yaml`](../workflow/rules.yaml) | Direktiven D1–D8 als prüfbare Invarianten (`on`/`assert`/`check`/`remedy`/`source`) plus die Punkte, die nur Prosa-Konvention sind | — (Begründungsprosa bleibt Handtext) |
+| [`workflow/pipeline.yaml`](../workflow/pipeline.yaml) | Pipeline-Schritte mit strukturierten pre-/postconditions, gebunden an Rollen, Zustände, Fakten und Regeln | — |
 
 Zwei Skripte arbeiten darauf:
 
