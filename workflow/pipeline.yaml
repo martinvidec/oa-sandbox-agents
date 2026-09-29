@@ -21,9 +21,13 @@ source: "AGENTS.md — Arbeitsaufträge (Pipeline), Worktree-Konvention; docs/wo
 first: worktree_create
 
 steps:
+  # Akteur ist der Lead, nicht der Coder: `Bash(git worktree *)` steht ausschließlich im
+  # Lead-Set (AGENTS.md D2), und der Lead arbeitet dafür vom Repo-Root — ein Coder-Run könnte
+  # den Schritt nicht ausführen (Review-Befund M3 zu PR #49). Der Zustand `in_progress` ist zu
+  # diesem Zeitpunkt gesetzt, und gesetzt hat ihn der Lead beim Delegieren.
   - id: worktree_create
     name: "Worktree anlegen"
-    actor: coder
+    actor: lead
     workdir: repo-root
     delegated: false
     description: "1 Worktree pro Coding-Aufgabe, Branch `feat|fix|docs/<issue-nr>-<slug>`, Basis `origin/main` — außer das Issue baut auf einem offenen PR auf (D8)."
@@ -31,7 +35,7 @@ steps:
     state_after: in_progress
     preconditions:
       - actor_check:
-          role: coder
+          role: lead
       - label_check:
           state: in_progress
           present: true
@@ -82,7 +86,6 @@ steps:
           present: true
     rules:
       - D7_no_run_in_merging_worktree
-      - D7_escalate_after_second_abort
       - D3_one_issue_per_pr
       - D4_review_label_needs_evidence
       - D5_nothing_stays_local

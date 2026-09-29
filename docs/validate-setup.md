@@ -108,7 +108,8 @@ selbst muss zeichengenau übereinstimmen.
 
 ## Was geprüft wird
 
-**Ebene 1 — Schema** (ajv): `roles.yaml` und `states.yaml` gegen JSON-Schemata im Skript, dazu die
+**Ebene 1 — Schema** (ajv): `roles.yaml`, `states.yaml`, `rules.yaml` und `pipeline.yaml` gegen
+JSON-Schemata im Skript, dazu die
 Referenzauflösung: Rollen mit D2-Set haben Allowlist und Budget, Übergangs-Owner sind bekannte
 Rollen (bzw. `human`/`any_agent`), `label_table` nennt existierende Zustände.
 
@@ -226,12 +227,44 @@ so teuer wie ein Durchrutscher, deshalb vergleicht jeder Fall die **vollständig
 ein zusätzlicher Fehlalarm im selben Fall fällt damit auf. `prosa-datei-fehlt` entsteht eine Ebene
 darüber beim Lesen der Datei und hat deshalb keinen Selbsttest-Fall.
 
+**Ebene 2d — Regel-Konsistenz** (`workflow/rules.yaml`): jede Regel hat `on`, `assert`, `check`,
+`remedy` und `source`; `check`-Quelle kommt aus dem Fakt-Vokabular (`gh_api`, `git_state`,
+`process_exit`, `ci_run`); jede Direktive D1–D8 ist entweder durch eine Regel abgedeckt oder als
+`documented_convention` mit Begründung markiert (`direktive-ohne-abdeckung`), und Konventionen
+verweisen sauber auf die kommende Ebene 3. Jeder `source`-Querverweis nennt eine **fette
+Überschrift aus AGENTS.md wörtlich und ohne Satzpunkt** (`ueberschrift-fehlt`,
+`ueberschrift-satzpunkt`, `quelldatei-fehlt`) — die Querverweis-Konvention ist damit zum ersten
+Mal maschinell geprüft. Ausschließlich beobachtbare Fakten: eine Regel kann ihren `check` nicht
+von einem Fakt lösen, dessen Quelle verspricht, sie maschinell zu prüfen
+(`fakt-quelle-abweichend`), und der Abgleich, dass `run_aborted`-Regeln wie
+`D7_escalate_after_second_abort` eine beobachtbare Zählung brauchen, bevor sie an
+`needs-human`-Bedingungen hängen, ist als `documented_convention` geführt — die Abbruch-Zählung
+liegt prozessual beim Lead und wird erst mit der Ebene 3 (Runtime-Replay) maschinell prüfbar.
+Die Abgrenzung der Review-Schleife von D8 ist ein eigener harter Befund (`d8-review-schleife`)
+**mit Gegenrichtung** — eine Nicht-D8-Regel am selben Trigger schweigt.
+
+**Ebene 2e — Pipeline-Konsistenz** (`workflow/pipeline.yaml`): jeder Schritt referenziert nur
+existierende Zustände, Labels, Rollen und Fakt-Vokabular (`unbekannte-bedingung`,
+`schritt-unerreichbar`); die Bedingungen sind strukturierte Formen (`label_check`,
+`actor_check`, `ci_check` — eine pro Eintrag), freie Schlüssel werden gemeldet. Die vier Schritte
+bilden von `first` aus eine begehbare Kette.
+
+| Neue Befundarten (Ebene 2d/2e, Auswahl) | Bedeutung |
+|---|---|
+| `direktive-ohne-abdeckung` | eine Direktive D1–D8 ohne Regel und ohne `documented_convention` |
+| `ueberschrift-fehlt` / `ueberschrift-satzpunkt` | `source`-Verweis trifft keine AGENTS.md-Fettung wörtlich / inkludiert den Satzpunkt |
+| `fakt-quelle-abweichend` | Regel-`check` ist nicht mit der Quelle des referenzierten Fakts vereinbar |
+| `d8-review-schleife` | eine Regel mischt D8 mit der Review-Schleife (AGENTS.md, „**Abgrenzung zur Review-Schleife**") |
+| `unbekannte-bedingung` / `schritt-unerreichbar` | Pipeline-Bedingung frei oder Schritt nicht von `first` erreichbar |
+
 > **Doku-Gleichzug.** Wer ein Tool-Set ändert, ändert `roles.yaml` **und** die D2-Prosa im selben
 > PR — das war vorher Disziplin und ist jetzt CI. Die Lektion gilt eine Ebene höher weiter und
 > mechanisiert ist sie dort **nicht**: Diese Datei beschreibt, was der Validator prüft, und niemand
 > vergleicht sie mit dem Skript. Neue Befundarten, Ausnahmen oder Aufrufoptionen gehören deshalb
 > in denselben PR wie ihre Implementierung, sonst entsteht genau der Drift wieder, gegen den
-> Ebene 2c gebaut ist.
+> Ebene 2c gebaut ist. (M1 zu PR #49: genau diese Lücke wurde im Stufe-2-PR nachgeholt —
+> Ebene 1 um `rules.yaml`/`pipeline.yaml`, Ebene 2d/2e samt Befundtabellen, aktualisierter
+> Selbsttest-Beschreibung.)
 
 **Ebene 3 — Runtime-Replay** (letzter Zyklus aus beobachtbaren Ereignissen gegen `rules.yaml`)
 ist **nicht** Teil dieses MVP (Spec § 5.5) — eigenes Folge-Issue.

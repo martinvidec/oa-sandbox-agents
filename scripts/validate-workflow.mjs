@@ -519,15 +519,29 @@ const INFRASTRUKTUR = ['github', 'local'];
 // Die fett gesetzten Überschriften einer Markdown-Datei — die Zielmenge der
 // Querverweis-Konvention von AGENTS.md. Der abschließende Satzpunkt (`.` bzw. `:`) gehört
 // laut Konvention zum Satz, nicht zur Überschrift, und wird deshalb hier abgeschnitten:
-// „**Eskalation:**" ist die Überschrift „Eskalation". Gelesen wird zeilenweise und
-// nicht-gierig, damit Formen wie `Bash(git *)` innerhalb der Fettung nicht stören.
+// „**Eskalation:**" ist die Überschrift „Eskalation". Gelesen wird nicht-gierig, damit Formen
+// wie `Bash(git *)` innerhalb der Fettung nicht stören.
+//
+// Als Überschrift zählt nur die **erste Fettung einer Aufzählungszeile, die mit ihr beginnt**
+// (`- **X** …`, beliebig eingerückt) — in dieser Form stehen die Punkt-Titel von AGENTS.md
+// durchgehend. Jede Fettung zu sammeln wäre zu großzügig: AGENTS.md ist voll von
+// Inline-Betonungen (`**nicht**`, `**Vollständig**`, `**PFLICHT**`), und ein Verweis darauf
+// löste dann genauso auf wie einer auf einen echten Punkt-Titel — also bliebe gerade der
+// Fehlermodus unentdeckt, vor dem die Querverweis-Konvention warnt (Review-Befund N3 zu
+// PR #49).
+//
+// **Grenze der Prüfung:** Es ist eine Existenzprüfung, keine Zuordnungsprüfung. Nicht geprüft
+// wird, ob die zitierte Überschrift unter derjenigen Direktive steht, die die Regel als
+// `directive` führt — ein Verweis auf den Geschwister-Punkt daneben fällt hier nicht auf und
+// bleibt Sache des Reviewer-Runs.
+const UEBERSCHRIFT_ZEILE = /^\s*[-*]\s+\*\*(.+?)\*\*/;
 export function fetteUeberschriften(markdown) {
   const gefunden = new Set();
   for (const zeile of (markdown ?? '').split('\n')) {
-    for (const m of zeile.matchAll(/\*\*(.+?)\*\*/g)) {
-      const text = m[1].trim().replace(/[.:]+$/, '').trim();
-      if (text) gefunden.add(text);
-    }
+    const m = zeile.match(UEBERSCHRIFT_ZEILE);
+    if (!m) continue;
+    const text = m[1].trim().replace(/[.:]+$/, '').trim();
+    if (text) gefunden.add(text);
   }
   return gefunden;
 }
@@ -1052,6 +1066,25 @@ const D2_FAELLE = [
 // — der ist der eigentliche Lauf. Verglichen wird die **vollständige** Befundliste, damit ein
 // zusätzlicher Fehlalarm im selben Fall auffällt (M2 zu PR #48).
 const klon = o => JSON.parse(JSON.stringify(o));
+
+// Überschriftenerkennung (N3 zu PR #49): Nur eine Aufzählungszeile, die MIT der Fettung
+// beginnt, ist ein Punkt-Titel. Inline-Betonungen im Fließtext, im Blockquote und mitten in
+// einem Aufzählungspunkt sind keine — sonst löste ein Verweis auf `**offenen**` genauso auf
+// wie einer auf einen echten Titel.
+const UEBERSCHRIFT_QUELLE = [
+  '- **D1 — Merge nur durch Martin** bei vollständig grünem CI.',
+  '  - **Eskalation:** Bricht auch der Fix-Run ab → `needs-human`.',
+  'Direkte Pushes auf `main` sind für Agenten **ausnahmslos** verboten.',
+  '> **Querverweis-Konvention:** Ein Verweis nennt die Überschrift wörtlich.',
+  '- Basis ist `origin/main` — außer das Issue baut auf einem **offenen** PR auf (D8).',
+].join('\n');
+const UEBERSCHRIFT_FAELLE = [
+  { id: 'Überschriften: Punkt-Titel einer Aufzählungszeile', text: 'D1 — Merge nur durch Martin', ist: true },
+  { id: 'Überschriften: Satzpunkt gehört nicht zur Überschrift', text: 'Eskalation', ist: true },
+  { id: 'Überschriften Gegenrichtung: Inline-Fettung im Fließtext', text: 'ausnahmslos', ist: false },
+  { id: 'Überschriften Gegenrichtung: Fettung im Blockquote', text: 'Querverweis-Konvention', ist: false },
+  { id: 'Überschriften Gegenrichtung: Inline-Fettung mitten im Aufzählungspunkt', text: 'offenen', ist: false },
+];
 
 const MINI_UEBERSCHRIFTEN = new Set([
   'D1 — Merge nur durch Martin', 'D2 — Budget-Guards', 'D3 — Kleine PRs', 'D4 — Akzeptanzkriterien',
@@ -1653,7 +1686,7 @@ if (selftestOnly) {
   const ok = errors.length === 0;
   if (jsonOut) console.log(JSON.stringify({ ok, selftest, errors, warnings }, null, 2));
   else {
-    console.log('Selbsttest der Sicherheitsanalyse und des D2-Prosa-Abgleichs');
+    console.log('Selbsttest: Sicherheitsanalyse, Subsumption, D2-Prosa-Abgleich, Regel- und Pipeline-Konsistenz');
     for (const s of selftest) console.log(`  ${s.uebersprungen ? 'übsp' : s.ok ? 'ok  ' : 'FEHL'} ${s.entry.replace(/\n/g, '\\n')} → erwartet: ${s.erwartet}, gefunden: ${s.gefunden.join(', ') || '—'}`);
     for (const w of warnings) console.log(`  Warnung: ${w.message}`);
     if (!ok) for (const e of errors) console.log(`  Fehler: ${e.message}`);

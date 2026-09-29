@@ -61,10 +61,10 @@ triggers:
     description: "Ein Run endet regulär."
     observable_via: git_state
     pipeline: true
-  - id: run_aborted
-    description: "Ein Run bricht ab — `--max-turns`, Crash oder Hänger an einer Freigabe (D7)."
-    observable_via: gh_api
-    pipeline: true
+  # Bewusst KEIN Trigger `run_aborted`: Der Abbruch selbst ist beobachtbar, die Eskalation aber
+  # hängt an der Versuchszählung, und die ist es nicht (Review-Befund M2 zu PR #49). Ein Trigger,
+  # an dem keine prüfbare Regel hängen kann, täuschte Umfang vor; die Eskalation steht unten als
+  # `D7_escalate_after_second_abort` in `documented_conventions`.
   - id: pr_opened
     description: "Ein Draft-PR wird geöffnet."
     observable_via: gh_api
@@ -87,7 +87,16 @@ triggers:
     pipeline: true
 
 # Beobachtbare Fakten. `command` nennt den Befehl, mit dem sich der Fakt ablesen lässt —
-# ohne ihn wäre „beobachtbar" eine Behauptung. Die IDs dürfen nicht mit denen aus
+# ohne ihn wäre „beobachtbar" eine Behauptung. Genannt wird nur, was an der Stelle der
+# Beobachtung auch ausführbar ist (Review-Befund N4 zu PR #49): entweder eine Freigabeform
+# aus den Tool-Sets von AGENTS.md D2 (`git status --long`, `git log …`, `gh issue view`,
+# `gh pr view`, `gh run view`) oder der CI-Job `workflow-dsl`, der die Skripte aus `scripts/`
+# ausführt. `node scripts/validate-workflow.mjs` steht in keinem Tool-Set — die vier
+# `process_exit`-Fakten nennen deshalb den CI-Job als Ort der Beobachtung, nicht einen Befehl
+# innerhalb eines Runs. Ein `command`, das weder ein Tool-Set noch ein CI-Job ausführen kann,
+# wäre wieder eine Behauptung (`git merge-base --is-ancestor` war genau das und ist durch die
+# `git log`-Form ersetzt, die in Coder- und Lead-Set steht).
+# Die IDs dürfen nicht mit denen aus
 # workflow/states.yaml kollidieren; beide Listen bilden zusammen das Fakten-Vokabular, das
 # workflow/pipeline.yaml in `fact_check` referenziert.
 facts:
@@ -102,19 +111,19 @@ facts:
   - id: no_merge_tool_in_any_set
     description: "Kein Rollen-Set führt eine `gh pr merge`-Form, und keine Rolle hat `merge_allowed: true`."
     check: process_exit
-    command: "node scripts/validate-workflow.mjs — die Befunde `d1-merge` und `d1-merge-tool` bleiben aus"
+    command: "CI-Job `workflow-dsl` (`node scripts/validate-workflow.mjs`) — die Befunde `d1-merge` und `d1-merge-tool` bleiben aus"
   - id: delegated_roles_have_budget
     description: "Jede delegierte Rolle trägt ein `budget.max_turns` mit belegter Quelle."
     check: process_exit
-    command: "node scripts/validate-workflow.mjs — der Befund `fehlendes-budget` bleibt aus"
+    command: "CI-Job `workflow-dsl` (`node scripts/validate-workflow.mjs`) — der Befund `fehlendes-budget` bleibt aus"
   - id: tool_allowlist_analysis_clean
     description: "Jede Freigabeform besteht die Wildcard- und Subsumptionsanalyse (Push-Guard, Injektionsflags, Sammelpattern)."
     check: process_exit
-    command: "node scripts/validate-workflow.mjs — keine Befunde aus Ebene 2a"
+    command: "CI-Job `workflow-dsl` (`node scripts/validate-workflow.mjs`) — keine Befunde aus Ebene 2a"
   - id: check_sources_only_github_and_local
     description: "Jede Quelle aus `check_sources` führt `infrastructure: github` oder `local` — keine dritte Infrastruktur."
     check: process_exit
-    command: "node scripts/validate-workflow.mjs — der Befund `fremde-infrastruktur` bleibt aus"
+    command: "CI-Job `workflow-dsl` (`node scripts/validate-workflow.mjs`) — der Befund `fremde-infrastruktur` bleibt aus"
   - id: pr_closes_exactly_one_issue
     description: "Der PR-Body nennt genau ein `Closes #N`."
     check: gh_api
@@ -131,14 +140,14 @@ facts:
     description: "Im Worktree liegen nach dem Run keine uncommitteten und keine untracked Änderungen."
     check: git_state
     command: "git status --long"
+  - id: head_pushed_to_origin
+    description: "Der Stand ist gepusht: `HEAD` liegt auch auf `origin/<branch>`, kein Commit steht nur lokal."
+    check: git_state
+    command: "git status --long — „Your branch is up to date with 'origin/<branch>'.\", nicht „ahead of\""
   - id: worktree_merge_in_progress
     description: "Im Worktree läuft ein Merge — `MERGE_HEAD` ist gesetzt, ein früherer Sync-Run ist mittendrin abgebrochen."
     check: git_state
     command: "git status --long — „All conflicts fixed but you are still merging.\""
-  - id: needs_human_after_second_abort
-    description: "Nach dem Abbruch des Fix- bzw. des zweiten Sync-Versuchs trägt das Issue `needs-human`."
-    check: gh_api
-    command: "gh issue view <n> --json labels"
   - id: review_comment_present
     description: "Der Reviewer-Run hat am PR einen Kommentar hinterlassen — auch ohne Befunde („Review ok, keine Befunde\"); Schweigen zählt nicht als Freigabe."
     check: gh_api
@@ -146,11 +155,11 @@ facts:
   - id: branch_contains_declared_base
     description: "Der Branch enthält den Stand seiner angegebenen Basis: `origin/main` — bei einem D8-Issue `origin/<pr-branch>` aus den Agent-Hinweisen."
     check: git_state
-    command: "git merge-base --is-ancestor <basis> HEAD"
+    command: "git log HEAD..<basis> --oneline — leere Ausgabe heißt: `<basis>` ist in `HEAD` enthalten"
   - id: dependent_branch_contains_main
     description: "Der Branch des abhängigen Issues enthält `origin/main` — der Sync nach dem Merge des Vorgängers ist gelaufen."
     check: git_state
-    command: "git merge-base --is-ancestor origin/main HEAD"
+    command: "git log HEAD..origin/main --oneline — leere Ausgabe heißt: der Sync ist gelaufen"
 
 rules:
   # Erste Regel: Die DSL erklärt ihre eigene Prüfpflicht. Ohne sie wäre jede weitere Regel
@@ -238,14 +247,20 @@ rules:
     source:
       agents_md: "Der Beleg folgt als PR-Kommentar"
 
+  # Sauber allein genügt nicht: Ein Worktree, in dem alles committet, aber nichts gepusht ist,
+  # ist sauber — und genau der Zustand „nur lokal", den D5 verbietet (Review-Befund N2 zu
+  # PR #49). Beide Fakten kommen aus `git status --long`.
   - id: D5_nothing_stays_local
     directive: D5
     on: run_end
     assert:
-      fact: worktree_clean_after_run
-      operator: is_true
+      all_of:
+        - fact: worktree_clean_after_run
+          operator: is_true
+        - fact: head_pushed_to_origin
+          operator: is_true
     check: git_state
-    remedy: "Ergebnis committen und pushen (Specs und Protokolle nach `docs/`); nichts bleibt nur im Worktree liegen."
+    remedy: "Ergebnis committen UND pushen (`git push -u origin HEAD`; Specs und Protokolle nach `docs/`); nichts bleibt nur im Worktree und nichts nur im lokalen Branch liegen."
     source:
       agents_md: "D5 — Doku bleibt im Repo"
 
@@ -270,17 +285,6 @@ rules:
     remedy: "Keinen Run starten, nichts committen (ein `git add -A` checkte Konfliktmarker ein): `needs-human` setzen und den Zustand in der Rückfrage an Martin benennen."
     source:
       agents_md: "D8-Basis, Vorgänger #X inzwischen gemergt"
-
-  - id: D7_escalate_after_second_abort
-    directive: D7
-    on: run_aborted
-    assert:
-      fact: needs_human_after_second_abort
-      operator: is_true
-    check: gh_api
-    remedy: "Nach dem Abbruch des Fix-Runs (bzw. des zweiten Sync-Versuchs) keinen weiteren Run delegieren, sondern `needs-human` setzen."
-    source:
-      agents_md: "Eskalation"
 
   - id: D8_worktree_base_is_pr_branch
     directive: D8
@@ -330,6 +334,13 @@ documented_conventions:
     why_not_checkable: "Ein Ziel außerhalb des Repos hinterlässt dort definitionsgemäß nichts Beobachtbares. Nur der Fehlgriff fiele auf — als eingecheckte Screenshots, und die fängt `D5_nothing_stays_local` erst, wenn sie wirklich committet wurden."
     source:
       agents_md: "`--out` zeigt nie in den Worktree"
+
+  - id: D7_escalate_after_second_abort
+    directive: D7
+    convention: "Nach dem Abbruch des Fix-Runs — bzw. des zweiten Sync-Versuchs — wird kein weiterer Run delegiert, sondern `needs-human` gesetzt."
+    why_not_checkable: "Die Konvention hängt an einer Zählung („Zählung — höchstens zwei Sync-Versuche pro Sync-Anlass\"), und die ist nicht beobachtbar: `gh issue view <n> --json labels` zeigt, OB `needs-human` steht, nicht, der wievielte Abbruch gerade vorliegt. Als Regel am Ereignis „Run bricht ab\" formuliert war sie falsch verdrahtet und ist deshalb hier gelandet (Review-Befund M2 zu PR #49): Das Ereignis feuert bei JEDEM Abbruch, nach dem ersten verlangt D7 aber gerade keinen `needs-human`, sondern einen Fix-Run bzw. genau einen erneuten Sync-Run (D8, „Sync-Run bricht ab, nicht mitten im Merge\") — die Regel hätte den korrekten Ablauf als Verstoß gemeldet. Die Zählung liegt prozessual beim Lead und wird erst mit dem Runtime-Replay über die Run-Historie prüfbar (Ebene 3, Spec § 5.5)."
+    source:
+      agents_md: "Eskalation"
 
   - id: D3_no_scope_creep
     directive: D3
