@@ -67,11 +67,38 @@ git worktree prune
 git branch -D feat/<issue-nr>-<slug>
 ```
 
+- **Der Remote-Branch verschwindet nur mit `delete_branch_on_merge`.** Die Repo-Einstellung
+  „Automatically delete head branches" (API-Feld `delete_branch_on_merge`) löscht den
+  Head-Branch beim Merge selbst — dann ist der Remote-Teil des Cleanups erledigt, ohne dass
+  irgendein Agent etwas ausführt. **Die Aktivierung ist ein Admin-Schritt des Menschen**
+  (Martin, in den Repo-Settings), und zwar einmalig pro Repo: `gh api` ist als
+  Universal-Schreibrecht in keinem Tool-Set (D1), und ein PATCH mit Agenten-Token endet
+  ohnehin in `404` (kein Admin-Recht). Kein Agent versucht die Aktivierung, auch der Lead
+  nicht. Stand und Einordnung als Einmaleinrichtung:
+  [`docs/validate-setup.md`](docs/validate-setup.md), „One-time Setup (GitHub-Repo):
+  `delete_branch_on_merge`". Ist die Einstellung aus, bleibt der Remote-Branch nach dem Merge
+  stehen; ihn löscht dann Martin im GitHub-UI. Der lokale Teil hängt nicht daran und gilt
+  unverändert.
+
+- **Lokal aufgeräumt heißt: kein Worktree, kein Branch.** Beides ist beobachtbar, und genau
+  so wird es geprüft (Regel `cleanup_after_merge` in
+  [`workflow/rules.yaml`](workflow/rules.yaml)): `git worktree list` nennt
+  `worktrees/<issue-nr>-<slug>` nicht mehr, und `git branch --list <präfix>/<issue-nr>-<slug>`
+  gibt nichts aus. Der Remote-Branch gehört **nicht** in diese Prüfung — er ist Nebenwirkung
+  des Merges (Punkt darüber) und für den Lead mit seinem Tool-Set nicht ablesbar.
+
 - **`-D`, nicht `-d`:** Wird der PR per Squash gemerged (so geschehen bei PR #2), landen die
   Branch-Commits nicht als solche auf `main`; `git branch -d` verweigert das Löschen dann als
   „not fully merged". `-D` ist nach einem gemergten PR korrekt, weil der Inhalt via Squash
   bereits auf `main` liegt. Vorher prüfen, dass der PR wirklich gemerged ist
   (`gh pr view <n> --json state,mergedAt`).
+
+- **Der lokale `-D` läuft im Zuge des Merge-Replys, nicht als eigener Run.** Der Lead räumt
+  auf, während er auf Martins Merge-Meldung antwortet — dann ist der Owner nachweislich am
+  Gerät und quittiert die Freigabe-Rückfrage sofort. Isoliert nachgeschoben lief genau diese
+  Rückfrage in den Fünf-Minuten-Timeout der Freigabe, und der Branch blieb liegen; das ist der
+  Grund für die Timing-Regel, nicht Bequemlichkeit. Die Merge-Prüfung davor bleibt Pflicht und
+  wird hier nicht zweimal beschrieben: „**`-D`, nicht `-d`**".
 
 - **Push immer als `git push -u origin HEAD`.** `git worktree add -b <branch> origin/main`
   setzt den Upstream auf `origin/main`; ein blankes `git push` bricht deshalb ab und Git
@@ -109,9 +136,9 @@ git branch -D feat/<issue-nr>-<slug>
 - **D2 — Budget-Guards:** Delegationen immer mit `--max-turns`; kein `--dangerously-skip-permissions` ohne enge `--allowedTools`. Minimal-Set, damit ein headless-Run nicht mitten in der Aufgabe an einer Freigabe hängen bleibt:
   - Coder: `Read`, `Write`, `Edit`, `Glob`, `Grep`, `Bash(git status *)`, `Bash(git diff *)`, `Bash(git log *)`, `Bash(git add *)`, `Bash(git commit *)`, `Bash(git push -u origin HEAD)`, `Bash(gh issue view *)`, `Bash(gh issue edit --add-label *)`, `Bash(gh issue edit --remove-label *)` (nur Labels; Aufrufform und Begründung in „**Kein blankes `Bash(gh issue edit *)`**"), `Bash(gh label list *)`, `Bash(gh pr create *)`, `Bash(gh pr view *)`, `Bash(gh pr comment *)`, `Bash(gh run list *)`, `Bash(gh run view *)`, `Bash(node scripts/verify-mermaid.mjs *)` (Verify-Beleg bei Diagramm-PRs; Form und Begründung in „**Verify-Aufruf: `Bash(node scripts/verify-mermaid.mjs *)`, `NODE_PATH` aus der Umgebung**"); die Sync-Einträge (D8) `Bash(git fetch origin)` und `Bash(git merge origin/main)` nur im Sync-Run („`main` holen"), vom Lead zusätzlich freigegeben
   - Reviewer: `Read`, `Glob`, `Grep`, `Bash(git diff *)`, `Bash(git log *)`, `Bash(gh issue view *)`, `Bash(gh pr view *)`, `Bash(gh pr diff *)`, `Bash(gh pr comment *)` — **kein** `Write`/`Edit`
-  - Lead (Delegation, Labels, Draft→Ready, D7-Prüfung, Cleanup): `Read`, `Glob`, `Grep`, `Bash(gh issue create *)`, `Bash(gh issue edit --add-label *)`, `Bash(gh issue edit --remove-label *)` (nur Labels; die D8-Basisänderung braucht eine eigene Zusatzfreigabe, siehe „**Kein blankes `Bash(gh issue edit *)`**"), `Bash(gh issue view *)`, `Bash(gh pr view *)`, `Bash(gh pr comment *)` (CI-Beleg und Rückmeldungen am PR, D4), `Bash(gh pr ready *)`, `Bash(gh run list *)`, `Bash(gh run view *)`, `Bash(gh label list *)`, `Bash(git status *)`, `Bash(git diff *)`, `Bash(git log *)` (für die D7-Prüfung und die D8-Vorprüfung, die dafür im Worktree-Verzeichnis laufen — siehe nächster Punkt), `Bash(git worktree *)`, `Bash(git checkout main)`, `Bash(git pull)`, `Bash(git branch -D *)` — **kein** `gh pr merge` (D1); im D7-Vollendungsfall kommen die dafür nötigen Einträge aus dem Coder-Set
+  - Lead (Delegation, Labels, Draft→Ready, D7-Prüfung, Cleanup): `Read`, `Glob`, `Grep`, `Bash(gh issue create *)`, `Bash(gh issue edit --add-label *)`, `Bash(gh issue edit --remove-label *)` (nur Labels; die D8-Basisänderung braucht eine eigene Zusatzfreigabe, siehe „**Kein blankes `Bash(gh issue edit *)`**"), `Bash(gh issue view *)`, `Bash(gh pr view *)`, `Bash(gh pr comment *)` (CI-Beleg und Rückmeldungen am PR, D4), `Bash(gh pr ready *)`, `Bash(gh run list *)`, `Bash(gh run view *)`, `Bash(gh label list *)`, `Bash(git status *)`, `Bash(git diff *)`, `Bash(git log *)` (für die D7-Prüfung und die D8-Vorprüfung, die dafür im Worktree-Verzeichnis laufen — siehe nächster Punkt), `Bash(git worktree *)`, `Bash(git checkout main)`, `Bash(git pull)`, `Bash(git branch --list *)` (lesende Cleanup-Prüfung: „**Lokal aufgeräumt heißt: kein Worktree, kein Branch**"), `Bash(git branch -D *)` — **kein** `gh pr merge` (D1); im D7-Vollendungsfall kommen die dafür nötigen Einträge aus dem Coder-Set
   - **Lead-Run arbeitet im Worktree-Verzeichnis:** Der Lead arbeitet vom Repo-Root. Dort zeigen `git status --long` und `git diff HEAD` den Root-Checkout, `HEAD` ist `main` — nicht der Worktree. Die D7-Prüfung und die D8-Vorprüfung laufen deshalb als eigener Lead-Run, der in `worktrees/<issue-nr>-<slug>` startet — genau wie die D7-Vollendung (D7, **Vollständig**) —, mit den vorhandenen Einträgen `Bash(git status *)`, `Bash(git diff *)`, `Bash(git log *)`, jeder Befehl einzeln.
-    - **Allowlist des Prüf-Runs: von den `git`-Einträgen des Lead-Sets nur diese drei lesenden** — `Bash(git status *)`, `Bash(git diff *)`, `Bash(git log *)`. Dazu kommen `Read`, `Glob`, `Grep` und die `gh …`-Einträge des Lead-Sets **vollständig**, also auch die schreibenden (`gh issue create`, `gh issue edit --add-label`/`--remove-label`, `gh pr comment`, `gh pr ready`): Sie arbeiten auf GitHub, brauchen kein Arbeitsverzeichnis und fassen den Worktree nicht an — der Prüf-Run braucht sie, um im Anschluss Labels zu setzen oder `needs-human` zu melden. Eingeengt wird also nur der `git`-Teil: Am Worktree liest der Prüf-Run ausschließlich. Die schreibenden `git`-Einträge des Lead-Sets werden für ihn **nicht** freigegeben — weder `Bash(git pull)` noch `Bash(git checkout main)`, `Bash(git worktree *)` oder `Bash(git branch -D *)`.
+    - **Allowlist des Prüf-Runs: von den `git`-Einträgen des Lead-Sets nur diese drei lesenden** — `Bash(git status *)`, `Bash(git diff *)`, `Bash(git log *)`. Dazu kommen `Read`, `Glob`, `Grep` und die `gh …`-Einträge des Lead-Sets **vollständig**, also auch die schreibenden (`gh issue create`, `gh issue edit --add-label`/`--remove-label`, `gh pr comment`, `gh pr ready`): Sie arbeiten auf GitHub, brauchen kein Arbeitsverzeichnis und fassen den Worktree nicht an — der Prüf-Run braucht sie, um im Anschluss Labels zu setzen oder `needs-human` zu melden. Eingeengt wird also nur der `git`-Teil: Am Worktree liest der Prüf-Run ausschließlich. Die schreibenden `git`-Einträge des Lead-Sets werden für ihn **nicht** freigegeben — weder `Bash(git pull)` noch `Bash(git checkout main)`, `Bash(git worktree *)` oder `Bash(git branch -D *)`. `Bash(git branch --list *)` ist zwar ebenfalls lesend, gehört aber zum Cleanup und nicht zur D7-Prüfung — der Prüf-Run bekommt es deshalb auch nicht.
     - **`git pull` ist im Prüf-Run nicht erlaubt.** Der Eintrag steht im Lead-Set ausschließlich für das Cleanup vom Repo-Root (`git checkout main`, dann `git pull` auf `main`). Im Worktree-Verzeichnis würde er stattdessen den Upstream des Feature-Branches in diesen mergen — vor dem ersten Push ist das `origin/main` (`git worktree add -b <branch> origin/main` setzt den Upstream dorthin, siehe Worktree-Konvention), nach `git push -u origin HEAD` `origin/<branch>`. In beiden Fällen ist es ein Merge in den Feature-Branch, und den behält D8 dem Coder-Sync-Run vor („`main` holen"), weil Konflikte aufzulösen Code ist (Rollen-Tabelle). Der Lead merged nie selbst; braucht der Worktree `main`, delegiert er einen Sync-Run.
     - Weder `git -C` noch `cd`: Ein Eintrag wie `Bash(git -C worktrees/* status)` hebelt den Push-Guard aus, weil der `*` beliebigen Text matcht — `git -C worktrees/x push origin HEAD:main --repo status` passt durch, und `git -C worktrees/x -c core.fsmonitor=<cmd> status` führt beliebige Befehle aus. `cd worktrees/… && git status --long` ist eine Kette und hängt an einer eigenen Freigabe (letzter Punkt von D2).
     - Delegation, Labels, Cleanup und `git worktree list` laufen weiter vom Repo-Root — mit dem vollen Lead-Set, `git pull` inklusive.

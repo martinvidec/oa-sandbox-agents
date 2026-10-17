@@ -160,6 +160,14 @@ facts:
     description: "Der Branch des abhängigen Issues enthält `origin/main` — der Sync nach dem Merge des Vorgängers ist gelaufen."
     check: git_state
     command: "git log HEAD..origin/main --oneline — leere Ausgabe heißt: der Sync ist gelaufen"
+  - id: worktree_removed
+    description: "Der Worktree des Issues ist entfernt — `worktrees/<issue-nr>-<slug>` gibt es nicht mehr."
+    check: git_state
+    command: "git worktree list — der Pfad `worktrees/<issue-nr>-<slug>` kommt nicht mehr vor (`Bash(git worktree *)`, Lead-Set)"
+  - id: local_branch_absent
+    description: "Der lokale Feature-Branch des Issues ist gelöscht — kein Rest im Repo-Root-Checkout."
+    check: git_state
+    command: "git branch --list <präfix>/<issue-nr>-<slug> — leere Ausgabe heißt: der Branch ist weg (`Bash(git branch --list *)`, Lead-Set)"
 
 rules:
   # Erste Regel: Die DSL erklärt ihre eigene Prüfpflicht. Ohne sie wäre jede weitere Regel
@@ -308,11 +316,37 @@ rules:
     source:
       agents_md: "`main` holen"
 
+  # Ohne `directive`: Der Cleanup steht nicht in D1–D8, sondern in der Worktree-Konvention von
+  # AGENTS.md — ein erfundener Direktiven-Verweis wäre an normativer Stelle schlimmer als
+  # keiner (dieselbe Abwägung wie bei `DSL_self_validation` und in workflow/states.yaml).
+  # Geprüft wird ausschließlich der **lokale** Teil, und der ist es wirklich: Worktree-Liste
+  # und Branch-Liste sind zwei `git`-Befehle aus dem Lead-Set. Der Remote-Branch gehört nicht
+  # in den `assert` — bei aktiver Repo-Einstellung löscht ihn der Merge selbst, und ablesbar
+  # ist das mit keinem Tool-Set; er steht unten als `documented_convention`.
+  - id: cleanup_after_merge
+    on: pr_merged
+    assert:
+      all_of:
+        - fact: worktree_removed
+          operator: is_true
+        - fact: local_branch_absent
+          operator: is_true
+    check: git_state
+    remedy: "Vom Repo-Root aufräumen, jeden Befehl einzeln: `git checkout main`, `git pull`, `git worktree remove worktrees/<issue-nr>-<slug>`, `git worktree prune`, `git branch -D <präfix>/<issue-nr>-<slug>` — davor `gh pr view <n> --json state,mergedAt` als Merge-Beleg, und im Zuge des Merge-Replys statt als nachgeschobener Run (sonst läuft die Freigabe-Rückfrage in den Timeout)."
+    source:
+      agents_md: "Lokal aufgeräumt heißt: kein Worktree, kein Branch"
+
 # Punkte der Direktiven, die sich NICHT an beobachtbaren Fakten festmachen lassen. Sie stehen
 # hier mit Begründung statt als Regel mit weichem `assert` — der Validator verlangt für die
 # Abdeckung von D1–D8 eine Regel ODER einen Eintrag hier, aber nicht das Vortäuschen einer
 # Prüfung. `why_not_checkable` ist Pflichtfeld: Ohne Begründung wäre der Eintrag eine
 # bequeme Ausrede statt einer Feststellung.
+#
+# `directive` ist optional — wie bei `rules`. Nicht jede Konvention hängt an einer Direktive:
+# Der Cleanup steht in der Worktree-Konvention von AGENTS.md, und eine Direktive
+# hinzuzuerfinden, nur damit das Feld gefüllt ist, wäre genau der falsche Verweis an
+# normativer Stelle, vor dem die Querverweis-Konvention warnt. Die Abdeckungsprüfung D1–D8
+# berührt das nicht: Sie zählt die Einträge, die eine Direktive nennen.
 documented_conventions:
   - id: D2_status_long_not_short
     directive: D2
@@ -355,6 +389,15 @@ documented_conventions:
     why_not_checkable: "Eine Body-Änderung wäre nur an der Bearbeitungshistorie erkennbar. `gh pr view --json body` liefert allein den aktuellen Stand; an die Historie käme man über `gh api` — und `Bash(gh api *)` ist als Universal-Schreibrecht verboten (D1). Den Riegel setzt deshalb das Tool-Set: `gh pr edit` steht in keinem der drei Sets."
     source:
       agents_md: "Der PR-Body ist der Stand bei `gh pr create` und wird nicht nachgepflegt"
+
+  # Ohne `directive` (siehe Kopf dieses Abschnitts): Der Cleanup gehört zur
+  # Worktree-Konvention, nicht zu D1–D8. Der lokale Teil ist als Regel `cleanup_after_merge`
+  # geführt — hier steht nur, was daran nicht prüfbar ist.
+  - id: cleanup_remote_branch_by_setting
+    convention: "Den Remote-Branch löscht der Merge selbst, sofern die Repo-Einstellung „Automatically delete head branches\" (`delete_branch_on_merge`) aktiv ist. Ihre Aktivierung ist ein einmaliger Admin-Schritt Martins; kein Agent versucht sie."
+    why_not_checkable: "Zwei voneinander unabhängige Gründe. Erstens ist die Löschung eine Nebenwirkung des Merges, die niemand ausführt: Es gibt keinen Akteur, der sie versäumen und nachbessern könnte — bleibt sie aus, ist die Einstellung aus, und das ist ein Admin-Schritt (docs/validate-setup.md, „One-time Setup (GitHub-Repo): `delete_branch_on_merge`\"), kein Agenten-Befund. Zweitens ist sie mit keinem Tool-Set ablesbar: `gh api repos/{owner}/{repo}` nennt das Feld, aber `Bash(gh api *)` ist als Universal-Schreibrecht verboten (D1); `gh pr view <n> --json headRefName` liefert nur den Namen des Branches, nicht seine Existenz; und ein lokaler Blick über `git branch -r` hinge an einem `git fetch --prune`, das im Lead-Set nicht steht — ein veralteter Remote-Ref antwortete falsch. Ein `assert` darüber wäre also genau die Regel, die nur so tut, als prüfe sie etwas."
+    source:
+      agents_md: "Der Remote-Branch verschwindet nur mit `delete_branch_on_merge`"
 
   - id: D8_review_loop_is_not_d8
     directive: D8
