@@ -205,7 +205,7 @@
         <dc:Bounds x="2029" y="360" width="170" height="140" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="TextAnnotation_Cleanup_di" bpmnElement="TextAnnotation_Cleanup">
-        <dc:Bounds x="2340" y="330" width="260" height="120" />
+        <dc:Bounds x="2340" y="300" width="380" height="180" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="EndEvent_LeadFertig_di" bpmnElement="EndEvent_LeadFertig">
         <dc:Bounds x="2263" y="412" width="36" height="36" />
