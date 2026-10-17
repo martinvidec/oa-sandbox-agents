@@ -41,8 +41,9 @@ Voraussetzung: Node.js ≥ 18.
 
 > **Manueller Schritt eines Menschen (Martin), einmal pro Rechner — kein Agenten-Schritt.**
 > Settings → General → Pull Requests → „Automatically delete head branches" aktivieren.
-> Aktiver Stand: **`false`** (via `gh api repos/… --jq .delete_branch_on_merge` geprüft, Issue #50).
-> Ein PATCH mit Agenten-Token endet in `404` — das Repo-Admin-Recht hat kein Agent; auch der Lead
+> Aktiver Stand: **`true`** (via `gh api repos/… --jq .delete_branch_on_merge` geprüft, Issue #50,
+> von Martin aktiviert). Ein PATCH mit Agenten-Token endet in `404` — das Repo-Admin-Recht hat
+> kein Agent; auch der Lead
 > aktiviert die Einstellung nicht.
 
 Ist sie aktiv, wird der Remote-Branch beim Merge automatisch gelöscht (AGENTS.md,
