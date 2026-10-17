@@ -57,7 +57,7 @@
     <bpmn:serviceTask id="Task_Delegieren" name="Claude Code im Worktree delegieren (--max-turns, Label agent:in-progress)" />
     <bpmn:serviceTask id="Task_DraftReady" name="Draft→Ready (nach Reviewer-Run, CI grün)" />
     <bpmn:serviceTask id="Task_Melden" name="Martin melden: PR #, CI-Status, Review-Befunde" />
-    <bpmn:serviceTask id="Task_Cleanup" name="Cleanup: Worktree entfernen, Branch -D" />
+    <bpmn:serviceTask id="Task_Cleanup" name="Cleanup (Lead, im Merge-Reply)" />
     <bpmn:endEvent id="EndEvent_LeadFertig" name="Zyklus abgeschlossen" />
 
     <bpmn:sequenceFlow id="Flow_L1" sourceRef="StartEvent_LeadEmpfang" targetRef="Task_Klaeren" />
@@ -70,6 +70,11 @@
     <bpmn:sequenceFlow id="Flow_L8" sourceRef="Task_DraftReady" targetRef="Task_Melden" />
     <bpmn:sequenceFlow id="Flow_L9" sourceRef="Task_Melden" targetRef="Task_Cleanup" name="nach Merge (Owner: Martin)" />
     <bpmn:sequenceFlow id="Flow_L10" sourceRef="Task_Cleanup" targetRef="EndEvent_LeadFertig" />
+
+    <bpmn:textAnnotation id="TextAnnotation_Cleanup">
+      <bpmn:text>Vom Repo-Root: git worktree remove + git branch -D — im Zuge des Merge-Replys, nicht isoliert nachgeschoben. Der Remote-Branch wird bei aktiver Einstellung (delete_branch_on_merge, aktiv) beim Merge automatisch gelöscht.</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Association_Cleanup" sourceRef="Task_Cleanup" targetRef="TextAnnotation_Cleanup" />
   </bpmn:process>
 
   <!-- ================= RESEARCHER ================= -->
@@ -97,7 +102,7 @@
     <bpmn:sequenceFlow id="Flow_C2" sourceRef="Task_Worktree" targetRef="Task_Implement" />
     <bpmn:sequenceFlow id="Flow_C3" sourceRef="Task_Implement" targetRef="Task_PR" />
     <bpmn:sequenceFlow id="Flow_C4" sourceRef="Task_PR" targetRef="Gateway_CIGruen" />
-    <bpmn:sequenceFlow id="Flow_C4" sourceRef="Gateway_CIGruen" targetRef="Task_FixNach" name="nein" />
+    <bpmn:sequenceFlow id="Flow_C5" sourceRef="Gateway_CIGruen" targetRef="Task_FixNach" name="nein" />
     <bpmn:sequenceFlow id="Flow_C5" sourceRef="Task_FixNach" targetRef="Task_PR" />
     <bpmn:sequenceFlow id="Flow_C6" sourceRef="Gateway_CIGruen" targetRef="Task_LabelReview" name="ja" />
     <bpmn:sequenceFlow id="Flow_C7" sourceRef="Task_LabelReview" targetRef="EndEvent_Coder" />
@@ -198,6 +203,9 @@
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_Cleanup_di" bpmnElement="Task_Cleanup">
         <dc:Bounds x="2029" y="360" width="170" height="140" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TextAnnotation_Cleanup_di" bpmnElement="TextAnnotation_Cleanup">
+        <dc:Bounds x="2340" y="300" width="380" height="180" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="EndEvent_LeadFertig_di" bpmnElement="EndEvent_LeadFertig">
         <dc:Bounds x="2263" y="412" width="36" height="36" />
@@ -337,6 +345,10 @@
         <di:waypoint x="2199" y="430" />
         <di:waypoint x="2263" y="430" />
       </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Association_Cleanup_di" bpmnElement="Association_Cleanup">
+        <di:waypoint x="2199" y="390" />
+        <di:waypoint x="2340" y="390" />
+      </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_R1_di" bpmnElement="Flow_R1">
         <di:waypoint x="196" y="690" />
         <di:waypoint x="256" y="690" />
@@ -361,7 +373,7 @@
         <di:waypoint x="716" y="950" />
         <di:waypoint x="776" y="950" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_C4_di" bpmnElement="Flow_C4">
+      <bpmndi:BPMNEdge id="Flow_C5_di" bpmnElement="Flow_C5">
         <di:waypoint x="946" y="950" />
         <di:waypoint x="1006" y="950" />
       </bpmndi:BPMNEdge>
