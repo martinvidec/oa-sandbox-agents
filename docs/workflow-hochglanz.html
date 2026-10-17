@@ -22,6 +22,7 @@
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
     h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
     .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-note { color: #94a3b8; font-size: 0.8rem; margin-left: 1.75rem; margin-top: 0.25rem; }
     h2 {
       font-size: 1.1rem; font-weight: 700; margin: 2.5rem 0 1rem 0;
       color: #e2e8f0; border-left: 3px solid #22d3ee; padding-left: 0.75rem;
@@ -225,6 +226,7 @@ flowchart TD
 
     <!-- ============ DSL-VALIDIERUNG ============ -->
     <h2>Wie wird der Workflow mit der DSL validiert?</h2>
+    <p class="diagram-note">Farben dieses Diagramms: cyan = CI/Regel 1, violet = DSL-Dateien, amber = Validierung, rot = Befunde, grün = OK — abweichend von der seitenweiten Legende.</p>
     <div class="diagram-container">
       <pre class="mermaid">
 %%{init: {"flowchart":{"nodeSpacing":45,"rankSpacing":60,"curve":"basis","useMaxWidth":false}}}%%
@@ -259,7 +261,7 @@ flowchart TB
 
     subgraph DSL5["🐙 CI + Regel 1"]
         direction LR
-        CIJ["<b>CI-Job workflow-dsl</b><br/><small>pull_request + push auf main<br/>2 Schritte · NODE_PATH</small>"]:::ci
+        CIJ["<b>CI-Job workflow-dsl</b><br/><small>pull_request + push auf main<br/>2 Prüfschritte · NODE_PATH</small>"]:::ci
         SELF["<b>DSL_self_validation</b><br/><small>Regel 1 in rules.yaml<br/>jede Workflow-Änderung<br/>braucht einen grünen Lauf</small>"]:::regel
     end
 
