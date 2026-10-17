@@ -72,7 +72,7 @@
     <bpmn:sequenceFlow id="Flow_L10" sourceRef="Task_Cleanup" targetRef="EndEvent_LeadFertig" />
 
     <bpmn:textAnnotation id="TextAnnotation_Cleanup">
-      <bpmn:text>Vom Repo-Root: git worktree remove + git branch -D — im Zuge des Merge-Replys, nicht isoliert nachgeschoben. Der Remote-Branch wird beim Merge automatisch gelöscht (delete_branch_on_merge).</bpmn:text>
+      <bpmn:text>Vom Repo-Root: git worktree remove + git branch -D — im Zuge des Merge-Replys, nicht isoliert nachgeschoben. Der Remote-Branch wird bei aktiver Einstellung (delete_branch_on_merge, aktiv) beim Merge automatisch gelöscht.</bpmn:text>
     </bpmn:textAnnotation>
     <bpmn:association id="Association_Cleanup" sourceRef="Task_Cleanup" targetRef="TextAnnotation_Cleanup" />
   </bpmn:process>
@@ -102,7 +102,7 @@
     <bpmn:sequenceFlow id="Flow_C2" sourceRef="Task_Worktree" targetRef="Task_Implement" />
     <bpmn:sequenceFlow id="Flow_C3" sourceRef="Task_Implement" targetRef="Task_PR" />
     <bpmn:sequenceFlow id="Flow_C4" sourceRef="Task_PR" targetRef="Gateway_CIGruen" />
-    <bpmn:sequenceFlow id="Flow_C4" sourceRef="Gateway_CIGruen" targetRef="Task_FixNach" name="nein" />
+    <bpmn:sequenceFlow id="Flow_C5" sourceRef="Gateway_CIGruen" targetRef="Task_FixNach" name="nein" />
     <bpmn:sequenceFlow id="Flow_C5" sourceRef="Task_FixNach" targetRef="Task_PR" />
     <bpmn:sequenceFlow id="Flow_C6" sourceRef="Gateway_CIGruen" targetRef="Task_LabelReview" name="ja" />
     <bpmn:sequenceFlow id="Flow_C7" sourceRef="Task_LabelReview" targetRef="EndEvent_Coder" />
@@ -373,7 +373,7 @@
         <di:waypoint x="716" y="950" />
         <di:waypoint x="776" y="950" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_C4_di" bpmnElement="Flow_C4">
+      <bpmndi:BPMNEdge id="Flow_C5_di" bpmnElement="Flow_C5">
         <di:waypoint x="946" y="950" />
         <di:waypoint x="1006" y="950" />
       </bpmndi:BPMNEdge>
