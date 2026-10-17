@@ -22,6 +22,7 @@
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
     h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
     .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-note { color: #94a3b8; font-size: 0.8rem; margin-left: 1.75rem; margin-top: 0.25rem; }
     h2 {
       font-size: 1.1rem; font-weight: 700; margin: 2.5rem 0 1rem 0;
       color: #e2e8f0; border-left: 3px solid #22d3ee; padding-left: 0.75rem;
@@ -223,6 +224,75 @@ flowchart TD
       </pre>
     </div>
 
+    <!-- ============ DSL-VALIDIERUNG ============ -->
+    <h2>Wie wird der Workflow mit der DSL validiert?</h2>
+    <p class="diagram-note">Farben dieses Diagramms: cyan = CI/Regel 1, violet = DSL-Dateien, amber = Validierung, rot = Befunde, grün = OK — abweichend von der seitenweiten Legende.</p>
+    <div class="diagram-container">
+      <pre class="mermaid">
+%%{init: {"flowchart":{"nodeSpacing":45,"rankSpacing":60,"curve":"basis","useMaxWidth":false}}}%%
+flowchart TB
+    subgraph DSL1["📜 DSL — workflow/"]
+        direction LR
+        ROLES["<b>roles.yaml</b><br/><small>Rollen · Tool-Sets · Budgets</small>"]:::dslfile
+        STATES["<b>states.yaml</b><br/><small>Labels · Übergänge</small>"]:::dslfile
+        RULES["<b>rules.yaml</b><br/><small>Regeln D1–D8 · Fakten</small>"]:::dslfile
+        PIPE["<b>pipeline.yaml</b><br/><small>Schritte der Pipeline</small>"]:::dslfile
+    end
+
+    subgraph DSL2["⚙️ scripts/validate-workflow.mjs"]
+        direction TB
+        E1["<b>Ebene 1 — Schema</b> (ajv)<br/><small>4 Dateien · Referenzauflösung</small>"]:::script
+        E2["<b>Ebene 2 — Konsistenz-Linter</b><br/><small>2a Wildcard-Sicherheit · 2b Zustandsmaschine<br/>2c D2-Prosa ↔ roles.yaml · 2d Regeln · 2e Pipeline</small>"]:::script
+        ST["<b>Selbsttest</b><br/><small>über 120 Fälle · läuft bei jedem Lauf mit<br/>Melder + Gegenrichtung</small>"]:::script
+    end
+
+    subgraph DSL3["📄 Generierung — render-agents.mjs"]
+        direction LR
+        GEN["<b>render-agents.mjs --check</b><br/><small>generiert == eingecheckt</small>"]:::script
+        AG["<b>AGENTS.md</b><br/><small>Rollen- + Label-Tabelle<br/>zwischen dsl:*-Markern</small>"]:::agents
+    end
+
+    subgraph DSL4["🏁 Ergebnis"]
+        direction LR
+        OK(["<b>exit 0 — OK</b><br/><small>Warnungen erlaubt<br/>CI-Beleg = DSL-Beleg</small>"]):::ok
+        FAIL["<b>exit 1 — Befunde</b><br/><small>verbotener-eintrag · wildcard-mittig<br/>fakt-quelle-abweichend<br/>ueberschrift-fehlt · ueberschrift-satzpunkt</small>"]:::befund
+        FIX["<b>Befunde beheben · neu pushen</b><br/><small>kein agent:review, solange rot</small>"]:::befund
+    end
+
+    subgraph DSL5["🐙 CI + Regel 1"]
+        direction LR
+        CIJ["<b>CI-Job workflow-dsl</b><br/><small>pull_request + push auf main<br/>2 Prüfschritte · NODE_PATH</small>"]:::ci
+        SELF["<b>DSL_self_validation</b><br/><small>Regel 1 in rules.yaml<br/>jede Workflow-Änderung<br/>braucht einen grünen Lauf</small>"]:::regel
+    end
+
+    SELF -.->|"fordert grünen Lauf"| CIJ
+    CIJ -->|"Schritt 1"| E1
+    CIJ -->|"Schritt 2"| GEN
+    ROLES --> E1
+    STATES --> E1
+    RULES --> E1
+    PIPE --> E1
+    ROLES -.-> GEN
+    STATES -.-> GEN
+    E1 -->|"Schema erfüllt"| E2
+    ST -.->|"prüft die Prüfer"| E2
+    GEN -->|"Vergleich"| AG
+    AG -.->|"D2-Prosa (2c)"| E2
+    E2 --> OK
+    E2 --> FAIL
+    GEN -.->|"Abweichung"| FAIL
+    FAIL --> FIX
+
+    classDef dslfile fill:#1e1538,stroke:#a78bfa,stroke-width:1.5px,color:#f5f3ff
+    classDef script fill:#2b1d07,stroke:#fbbf24,stroke-width:1.5px,color:#fffbeb
+    classDef agents fill:#0b1220,stroke:#e2e8f0,stroke-width:1.5px,stroke-dasharray:4 3,color:#e2e8f0
+    classDef ci fill:#111827,stroke:#94a3b8,stroke-width:1.5px,color:#f1f5f9
+    classDef ok fill:#052e24,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5
+    classDef befund fill:#2e0f1a,stroke:#fb7185,stroke-width:1.5px,color:#fff1f2
+    classDef regel fill:#082f3a,stroke:#22d3ee,stroke-width:1.5px,color:#ecfeff
+      </pre>
+    </div>
+
     <!-- ============ AKTEURE ============ -->
     <h2>Akteure im Detail</h2>
     <div class="cards">
@@ -375,6 +445,12 @@ flowchart TD
       .cluster[id*="OG2"] > rect { stroke: #34d39966; fill: #34d3990a; }
       .cluster[id*="OG3"] > rect { stroke: #fbbf2466; fill: #fbbf240a; }
       .cluster[id*="OG4"] > rect { stroke: #94a3b866; fill: #94a3b80a; stroke-dasharray: 6 4; }
+      /* DSL-Validierung: Quelle violett, Werkzeuge amber, Ergebnis grün/rose, Regel cyan */
+      .cluster[id*="DSL1"] > rect { stroke: #a78bfa66; fill: #a78bfa0a; }
+      .cluster[id*="DSL2"] > rect { stroke: #fbbf2466; fill: #fbbf240a; }
+      .cluster[id*="DSL3"] > rect { stroke: #e2e8f044; fill: #e2e8f008; stroke-dasharray: 6 4; }
+      .cluster[id*="DSL4"] > rect { stroke: #34d39966; fill: #34d3990a; }
+      .cluster[id*="DSL5"] > rect { stroke: #22d3ee66; fill: #22d3ee0a; }
       .flowchart-link { stroke-width: 1.6px; }
       .edgeLabel, .edgeLabel p, .labelBkg { background-color: #0f172a; color: #cbd5e1; font-weight: 500; }
       .edgeLabel rect { fill: #0f172a; opacity: 1; }
