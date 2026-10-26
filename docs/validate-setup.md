@@ -165,7 +165,11 @@ zeichengenau):
 `pipeline.yaml` der **aktiven Instanz** gegen
 JSON-Schemata im Skript, dazu die
 Referenzauflösung: Rollen mit D2-Set haben Allowlist und Budget, Übergangs-Owner sind bekannte
-Rollen (bzw. `human`/`any_agent`), `label_table` nennt existierende Zustände.
+Rollen (bzw. `human`/`any_agent`), `label_table` nennt existierende Zustände. Das Budget verlangt
+`max_turns` **oder** `max_work_steps` (Schemata plus eigener Befund `budget-ohne-grenze`, Issue #58):
+`max_turns` ist der Cap der headless Claude-Code-Runs, `max_work_steps` der Cap für die
+Hermes-Sub-Agent-Runs der Instanz `hermes-pipeline` (delegate_task begrenzt Arbeitsschritte, keine
+Turn-Zahl).
 
 **Ebene 2a — Wildcard-Sicherheitsanalyse** jeder Freigabeform. Klassifiziert wird die *Form* des
 Patterns, nicht die Semantik des Tools (Spec § 8) — unklare Formen sind **Warnungen**, diese Formen
@@ -257,6 +261,8 @@ Zitat-Spans, ist sie zitiert und kein Set-Eintrag. Grenzen dieser Erkennung:
 | `dsl-ohne-prosa` | `allowed_tools`-Eintrag ohne Beleg im Set-Punkt seiner Rolle |
 | `prosa-set-fehlt` / `prosa-set-ohne-d2-set` | `d2_set` und Set-Punkt in AGENTS.md widersprechen sich |
 | `prosa-set-doppelt` | zwei Set-Punkte für dieselbe Rolle — welcher gilt, ist nicht entscheidbar |
+| `fremdblock-ohne-bezug` | ein in `foreign_set_blocks` deklarierter Set-Punkt kommt im D2-Abschnitt nicht vor (Issue #58) |
+| `fremdblock-kollidiert` | ein als fremd deklarierter Set-Punkt entspricht doch einer Rolle der Instanz — kein stiller Skip (Issue #58) |
 | `ausnahme-ohne-bezug` | eine Ausnahme, die nichts ausnimmt (s. u.) |
 | `d2-abschnitt-fehlt` / `prosa-datei-fehlt` | der Abgleich hat keine Quelle |
 
@@ -269,7 +275,16 @@ beim nächsten Mal zu viel ab. Derzeit gibt es genau eine — `Bash(git status)`
 `agents_md`, weil D2 die argumentlose Form ausdrücklich als Gegenbeispiel nennt („nicht nötig und
 bläht das Minimal-Set auf").
 
-Aktueller Umfang: **107 abgeglichene Formen** (Textzeile `AGENTS.md ↔ roles.yaml: … D2-Formen
+Seit Issue #58 kennt der Abgleich außerdem `d2_prose_check.foreign_set_blocks`: Damit meldet eine
+Instanz Set-Punkte der D2-Prosa, die zu keiner ihrer Rollen gehören — etwa den Coder- und
+Reviewer-Set-Punkt der Claude-Code-Sets, wenn die Instanz (wie `hermes-pipeline`) diese Rollen als
+Hermes-Sub-Agenten realisiert. Deklarierte Blöcke werden übersprungen (weder als Set-Punkt noch als
+Begründungsprosa geprüft); eine Deklaration ohne passenden Set-Punkt ist ein Fehler
+(`fremdblock-ohne-bezug`), und eine Deklaration, deren Label doch zu einer Rolle der Instanz passt,
+ist ein Fehler (`fremdblock-kollidiert`) — damit sich kein echter Drift wegdeklarieren lässt.
+
+Aktueller Umfang: **107 abgeglichene Formen** für die aktive Instanz `claude-pipeline` (60 für
+`hermes-pipeline`) (Textzeile `AGENTS.md ↔ roles.yaml: … D2-Formen
 abgeglichen`, JSON-Feld `geprueft.d2_prosa_formen`). Der Selbsttest prüft die Vergleichslogik gegen
 eine Miniatur-DSL und ein Miniatur-AGENTS.md statt gegen den echten Stand der Dateien — der ist der
 eigentliche Lauf. Jede

@@ -23,6 +23,32 @@ Das Replay
 tatsächlicher Läufe gegen die DSL (Spec § 3, Ebene 3) ist noch nicht gebaut — die Prüfung ist
 bislang statisch.
 
+## Workflow-Wechsel
+
+Die Registry benennt zwei Instanzen: [`claude-pipeline`](../workflow/claude-pipeline/) (aktiv) und
+[`hermes-pipeline`](../workflow/hermes-pipeline/) — der **Claude-Limit-Fallback** (Issue #58).
+Beide beschreiben dieselbe Pipeline; der Unterschied ist die Realisierung der Coder- und
+Reviewer-Rolle: headless Claude-Code-Runs mit `--allowedTools`-Sets beziehungsweise
+Hermes-Sub-Agenten (`delegate_task`, Lead-delegiert, isolierter Kontext) ohne maschinelles
+Tool-Zwangsniveau — die Tool-Abgrenzung läuft dort über die Delegationsanweisung des Lead,
+die D2-Guards (Budget, kein Push auf `main`, kein Merge) bleiben Lead-Verantwortung.
+
+Der Wechsel ist eine Prozedur, kein Codepfad — die DSL bleibt Quelle der Struktur:
+
+1. `workflow/registry.yaml`: `active:` tauschen (genau ein Eintrag bleibt `active: true` —
+   der Validator meldet sonst `registry-kein-aktiv` bzw. `registry-mehrfach-aktiv`).
+2. `node scripts/render-workflow.mjs --write` — WORKFLOW.md und der aktiv-Block in AGENTS.md
+   werden aus der neu aktiven Instanz generiert. AGENTS.md ändert sich dabei nur im
+   Marker-Bereich (aktiv-Block), nicht in den Direktiven.
+3. Commit via Pipeline: eigener Issue für den Wechsel, Coder-Run im Worktree, `git push -u
+   origin HEAD`, Draft-PR — der Validator muss grün sein (Regel `DSL_self_validation`).
+4. Merge durch Martin bei grünem CI (D1).
+
+**Laufende Issues bleiben auf ihrer gebundenen Instanz** — Temporal-Analogie: Ein Worktree,
+dessen Coder-Run als Claude-Code-Run delegiert wurde, wird auch mit Claude-Code-Runs zu Ende
+geführt (Fix-, Sync- und Reviewer-Run inklusive); der Switch greift erst für neu delegierte
+Issues. Der Wechsel zurück läuft in derselben Prozedur in Gegenrichtung.
+
 ## Pipeline
 
 ```

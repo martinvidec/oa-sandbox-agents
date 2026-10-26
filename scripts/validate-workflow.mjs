@@ -238,6 +238,18 @@ export function patternPraefix(entry) {
   return { fest, offen };
 }
 
+// Budget-Grenze einer Rolle (D2 — Delegationen immer mit Budget-Cap): `max_turns` (das
+// Budget-Feld der headless Claude-Code-Runs) ODER `max_work_steps` (Hermes-Sub-Agent-Runs,
+// Issue #58 — delegate_task begrenzt Arbeitsschritte, keine Turn-Zahl). Keins von beiden
+// heißt: Der Budget-Guard wäre nur Behauptung. Ein fehlendes `budget` ganz meldet der
+// eigentliche Lauf (`fehlendes-budget`) — diese Funktion prüft nur die Grenze selbst.
+export function budgetGrenze(rolle) {
+  const b = rolle?.budget;
+  if (!b) return [];
+  const grenze = ['max_turns', 'max_work_steps'].some(k => Number.isInteger(b[k]) && b[k] >= 1);
+  return grenze ? [] : ['budget-ohne-grenze'];
+}
+
 // `a` deckt `b` ab: alles, was `b` erlaubt, erlaubt auch `a`.
 export function deckt(a, b) {
   if (!a || !b) return false;
@@ -414,6 +426,13 @@ export function d2Abgleich(markdown, roles) {
 
   const rollen = roles.roles ?? [];
   const ausnahmen = (roles.d2_prose_check?.excluded_entries ?? []).map(a => ({ ...a, genutzt: false }));
+  // Set-Punkte der Prosa, die zu keiner Rolle DIESER Instanz gehören (Issue #58): Die D2-Prosa
+  // in AGENTS.md beschreibt die Claude-Code-Sets, während die hermes-pipeline ihre Coder-/Reviewer-
+  // Rolle als Hermes-Sub-Agenten realisiert. Ohne Deklaration würde ein solcher Set-Punkt als
+  // Begründungsprosa behandelt und jede Form daraus als fehlender Beleg gemeldet. Die Deklaration
+  // ist selbst geprüft: kollidiert sie mit einer Rolle der Instanz, ist das ein Fehler — sonst
+  // ließe sich mit ihr ein echter Drift wegdeklarieren.
+  const fremdBloecke = (roles.d2_prose_check?.foreign_set_blocks ?? []).map(f => ({ ...f, kern: labelKern(f.label), genutzt: false }));
   const ausnahme = (entry, side) => {
     const a = ausnahmen.find(x => x.entry === entry && x.side === side);
     if (a) a.genutzt = true;
@@ -431,9 +450,19 @@ export function d2Abgleich(markdown, roles) {
 
   const bloecke = d2Bloecke(abschnitt);
   const setBloecke = [];
+  const fremdIndizes = new Set();
   for (const [i, b] of bloecke.entries()) {
     if (!b.label) continue;
     const rolle = rollen.find(r => passtZuRolle(b.label, r));
+    const fremd = fremdBloecke.find(f => f.kern === labelKern(b.label));
+    if (fremd) {
+      fremd.genutzt = true;
+      fremdIndizes.add(i);
+      if (rolle) {
+        add('fremdblock-kollidiert', `AGENTS.md D2, Set-Punkt „${b.label}": als fremder Block deklariert, aber die Rolle \`${rolle.id}\` dieser Instanz entspricht dem Label — der Set-Punkt würde übersprungen und ein echter Drift bliebe unentdeckt`);
+      }
+      continue;
+    }
     if (rolle) setBloecke.push({ ...b, index: i, rolle });
   }
   let geprueft = 0;
@@ -487,7 +516,10 @@ export function d2Abgleich(markdown, roles) {
   // Rollen („steht in allen drei Sets"), deshalb genügt hier ein Beleg irgendwo in der DSL.
   const setIndizes = new Set(setBloecke.map(s => s.index));
   for (const [i, b] of bloecke.entries()) {
-    if (setIndizes.has(i)) continue;
+    // Fremd-deklarierte Set-Punkte gehören zu keiner Rolle dieser Instanz — sie werden weder
+    // als Set-Punkt noch als Begründungsprosa geprüft (sonst melde jede Form aus dem
+    // Claude-Set einen fehlenden Beleg).
+    if (setIndizes.has(i) || fremdIndizes.has(i)) continue;
     for (const e of b.formen) {
       geprueft++;
       if (dslUniversum.has(e) || alsVerbotBelegt(e) || ausnahme(e, 'agents_md')) continue;
@@ -500,6 +532,14 @@ export function d2Abgleich(markdown, roles) {
   for (const a of ausnahmen) {
     if (!a.genutzt) {
       add('ausnahme-ohne-bezug', `d2_prose_check/\`${a.entry}\` (side: ${a.side}): der Abgleich findet die Abweichung nicht — die Ausnahme nimmt nichts aus`);
+    }
+  }
+  // Dasselbe für die fremden Set-Punkte: eine Deklaration ohne Set-Punkt hinterlässt eine
+  // unnötige Ausnahme, die den nächsten echten Coder/Reviewer-Set-Punkt verdeckt, sobald die
+  // Instanz die Rolle doch wieder trägt.
+  for (const f of fremdBloecke) {
+    if (!f.genutzt) {
+      add('fremdblock-ohne-bezug', `d2_prose_check/foreign_set_blocks/\`${f.label}\`: der D2-Abschnitt nennt keinen Set-Punkt mit diesem Label — die Deklaration nimmt nichts aus`);
     }
   }
 
@@ -967,6 +1007,17 @@ const d2Mini = (setZeilen, ...weitere) => [
 // Der vollständige Set-Punkt der Miniatur-Rolle: enthält genau die `Bash(…)`-Einträge ihrer
 // Allowlist, erzeugt also für sich genommen keinen Befund.
 const D2_SET_PUNKT = 'Coder: `Read`, `Bash(git status *)`, `Bash(git add *)`';
+// Miniatur-DSL für die fremden Set-Punkte (Issue #58): Die hermes-pipeline realisiert Coder/
+// Reviewer als Hermes-Sub-Agenten — andere ID, Name mit Zusatz, `d2_set: false`, und die
+// Claude-Set-Punkte der D2-Prosa sind als `foreign_set_blocks` deklariert.
+const d2MiniHermes = fremd => ({
+  ...D2_MINI_ROLLEN,
+  roles: [{ id: 'hermes_coder', name: 'Coder (Hermes-Sub-Agent)', d2_set: false }],
+  d2_prose_check: {
+    file: 'AGENTS.md', excluded_entries: [],
+    foreign_set_blocks: fremd ? [{ label: 'Coder', reason: 'Claude-Set der anderen Instanz' }] : [],
+  },
+});
 const D2_FAELLE = [
   // --- Richtung a (Prosa → DSL), melden
   {
@@ -1073,6 +1124,53 @@ const D2_FAELLE = [
     roles: d2MiniMitAusnahme('Bash(gh pr view *)', 'agents_md', 'veraltete Ausnahme'),
     codes: ['ausnahme-ohne-bezug'],
   },
+  // --- Fremde Set-Punkte (Issue #58): Die hermes-pipeline realisiert Coder/Reviewer als
+  // Hermes-Sub-Agenten; ihre D2-Prosa-Set-Punkte der Claude-Sets sind deklariert, nicht still
+  // übersprungen (Miniatur: `d2MiniHermes` oben).
+  {
+    id: 'Fremdblock Gegenrichtung: deklarierter Set-Punkt ohne Rolle dieser Instanz schweigt',
+    md: d2Mini([D2_SET_PUNKT]),
+    roles: d2MiniHermes(true),
+    codes: [],
+  },
+  {
+    id: 'Fremdblock: Set-Punkt ohne Rolle und ohne Deklaration bleibt Begründungsprosa',
+    md: d2Mini([D2_SET_PUNKT]),
+    roles: { ...D2_MINI_ROLLEN, roles: [{ id: 'hermes_coder', name: 'Coder (Hermes-Sub-Agent)', d2_set: false }] },
+    codes: ['prosa-ohne-dsl', 'prosa-ohne-dsl'],
+  },
+  {
+    id: 'Fremdblock: Deklaration kollidiert mit vorhandener Rolle',
+    md: d2Mini([D2_SET_PUNKT]),
+    roles: {
+      ...D2_MINI_ROLLEN,
+      d2_prose_check: {
+        file: 'AGENTS.md', excluded_entries: [],
+        foreign_set_blocks: [{ label: 'Coder', reason: 'fälschlich deklariert' }],
+      },
+    },
+    // Der kollidierte Block wird übersprungen — der Rolle fehlt dann ihr Set-Punkt, und genau
+    // das meldet `prosa-set-fehlt` zusätzlich (die Kollision ist also kein stiller Skip).
+    codes: ['fremdblock-kollidiert', 'prosa-set-fehlt'],
+  },
+  {
+    id: 'Fremdblock: Deklaration ohne Set-Punkt nimmt nichts aus',
+    md: d2Mini(['Kein Set, nur Prosa.']),
+    roles: d2MiniHermes(true),
+    codes: ['fremdblock-ohne-bezug'],
+  },
+];
+
+// Fälle für die Budget-Grenze (budgetGrenze, Issue #58): `max_turns` ODER `max_work_steps`,
+// keins von beiden ist der Befund. Die Funktion meldet bewusst kein fehlendes `budget` —
+// dafür gibt es im eigentlichen Lauf `fehlendes-budget`.
+const BUDGET_FAELLE = [
+  { id: 'Budget: max_turns genügt weiter', rolle: { budget: { max_turns: 30 } }, codes: [] },
+  { id: 'Budget: max_work_steps (Hermes-Sub-Agent-Run)', rolle: { budget: { max_work_steps: 30 } }, codes: [] },
+  { id: 'Budget Gegenrichtung: beide Felder gesetzt', rolle: { budget: { max_turns: 5, max_work_steps: 40 } }, codes: [] },
+  { id: 'Budget: keine Grenze im Feld', rolle: { budget: { source: 'docs/workflow.md' } }, codes: ['budget-ohne-grenze'] },
+  { id: 'Budget: Grenze keine positive Zahl', rolle: { budget: { max_work_steps: 'viel' } }, codes: ['budget-ohne-grenze'] },
+  { id: 'Budget Gegenrichtung: fehlendes budget meldet fehlendes-budget, nicht diese Funktion', rolle: {}, codes: [] },
 ];
 
 // Fälle für die Regel-Konsistenz (Ebene 2d) und die Pipeline-Konsistenz (Ebene 2e). Wie beim
@@ -1312,6 +1410,9 @@ const PIPELINE_FAELLE = [
   // --- Rollen, Budget, Regel-Referenzen
   { id: 'Pipeline: actor ist keine Rolle', dsl: pipelineMit(p => { p.steps[0].actor = 'hacker'; }), codes: ['unbekannte-rolle', 'uebergang-owner'] },
   { id: 'Pipeline: delegierter Schritt ohne Budget der Rolle', dsl: MINI_PIPELINE, ctx: { ...MINI_PIPELINE_CTX, rollen: new Map([...MINI_PIPELINE_CTX.rollen, ['coder', { delegated: true }]]) }, codes: ['schritt-ohne-budget'] },
+  // Gegenrichtung (Issue #58): Das Budget-Feld des Hermes-Sub-Agenten-Runs (`max_work_steps`
+  // statt `max_turns`) genügt — der Schritt-Check verlangt ein Budget, nicht ein bestimmtes Feld.
+  { id: 'Pipeline Gegenrichtung: delegierter Schritt, Rolle mit max_work_steps-Budget', dsl: MINI_PIPELINE, ctx: { ...MINI_PIPELINE_CTX, rollen: new Map([...MINI_PIPELINE_CTX.rollen].map(([k, v]) => [k, k === 'coder' ? { delegated: true, budget: { max_work_steps: 30 } } : v])) }, codes: [] },
   { id: 'Pipeline: Delegation an einen Menschen', dsl: pipelineMit(p => { p.steps[1].delegated = true; }), codes: ['delegation-an-mensch'] },
   { id: 'Pipeline: rules nennt eine unbekannte Regel', dsl: pipelineMit(p => { p.steps[0].rules = ['D9_gibt_es_nicht']; }), codes: ['unbekannte-regel'] },
   // --- Review-Schleife
@@ -1394,6 +1495,14 @@ function runSelftest(verbotsformen) {
     const ok = codes.length === erwartet.length && erwartet.every((c, i) => c === codes[i]);
     fall(f.id, f.md, erwartet.join(', ') || 'kein Befund', codes, ok, 'd2-abgleich-fall-nicht-gefangen');
   }
+  // Budget-Grenze (Issue #58): `max_turns` ODER `max_work_steps` — dieselbe vollständige
+  // Befundliste je Fall.
+  for (const f of BUDGET_FAELLE) {
+    const erwartet = [...f.codes].sort();
+    const codes = budgetGrenze(f.rolle);
+    const ok = codes.length === erwartet.length && erwartet.every((c, i) => c === codes[i]);
+    fall(f.id, f.id, erwartet.join(', ') || 'kein Befund', codes, ok, 'budget-fall-nicht-gefangen');
+  }
   // Ebene 2d/2e gegen die Miniaturen. `entry` ist hier der Fallname statt einer Freigabeform —
   // die geprüfte Eingabe ist ein ganzes DSL-Dokument und gehört nicht in eine Zeile Ausgabe.
   for (const [faelle, fn, ctx, code] of [
@@ -1462,6 +1571,18 @@ const d2ProseCheckSchema = {
         },
       },
     },
+    // Set-Punkte der D2-Prosa, die zu keiner Rolle DIESER Instanz gehören (Issue #58) —
+    // deklariert, nicht still übersprungen; der Abgleich meldet Deklarationen ohne Bezug
+    // (`fremdblock-ohne-bezug`) und Kollisionen mit einer vorhandenen Rolle
+    // (`fremdblock-kollidiert`).
+    foreign_set_blocks: {
+      type: 'array', uniqueItems: true,
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['label', 'reason'],
+        properties: { label: toolEntry, reason: { type: 'string', minLength: 1 } },
+      },
+    },
   },
 };
 
@@ -1487,10 +1608,20 @@ const rolesSchema = {
           merge_allowed: { type: 'boolean' },
           delegated: { type: 'boolean' },
           workdir: { enum: ['repo-root', 'worktree', 'n/a'] },
+          // Budget-Cap: `max_turns` (headless Claude-Code-Runs) ODER `max_work_steps`
+          // (Hermes-Sub-Agent-Runs, Issue #58); welche Grenze greift, prüft `budgetGrenze`.
           budget: {
             type: 'object', additionalProperties: false,
-            required: ['max_turns', 'source'],
-            properties: { max_turns: { type: 'integer', minimum: 1 }, source: { type: 'string', minLength: 1 } },
+            required: ['source'],
+            anyOf: [
+              { required: ['max_turns'] },
+              { required: ['max_work_steps'] },
+            ],
+            properties: {
+              max_turns: { type: 'integer', minimum: 1 },
+              max_work_steps: { type: 'integer', minimum: 1 },
+              source: { type: 'string', minLength: 1 },
+            },
           },
           allowed_tools: { type: 'array', minItems: 1, uniqueItems: true, items: toolEntry },
           must_not_include: { type: 'array', uniqueItems: true, items: toolEntry },
@@ -1863,7 +1994,7 @@ if (selftestOnly) {
   const ok = errors.length === 0;
   if (jsonOut) console.log(JSON.stringify({ ok, selftest, errors, warnings }, null, 2));
   else {
-    console.log('Selbsttest: Sicherheitsanalyse, Subsumption, D2-Prosa-Abgleich, Regel- und Pipeline-Konsistenz, Registry-Invarianten, Generierungs-Vergleich');
+    console.log('Selbsttest: Sicherheitsanalyse, Subsumption, D2-Prosa-Abgleich (inkl. fremde Set-Punkte), Budget-Grenzen, Regel- und Pipeline-Konsistenz, Registry-Invarianten, Generierungs-Vergleich');
     for (const s of selftest) console.log(`  ${s.uebersprungen ? 'übsp' : s.ok ? 'ok  ' : 'FEHL'} ${s.entry.replace(/\n/g, '\\n')} → erwartet: ${s.erwartet}, gefunden: ${s.gefunden.join(', ') || '—'}`);
     for (const w of warnings) console.log(`  Warnung: ${w.message}`);
     if (!ok) for (const e of errors) console.log(`  Fehler: ${e.message}`);
@@ -1962,6 +2093,12 @@ if (rolesOk) {
     }
     // D2 — Delegationen immer mit `--max-turns`: jede delegierte Rolle braucht ein Budget,
     // und dessen `source` muss auf eine Datei zeigen, die es im Repo gibt.
+    // Budget-Cap (Issue #58): `max_turns` ODER `max_work_steps` — ein Budget ohne eine der
+    // beiden Grenzen ist nur Behauptung. Das Feld allein meldet `budgetGrenze`; das fehlende
+    // `budget` bleibt beim `fehlendes-budget` darunter.
+    for (const code of budgetGrenze(rolle)) {
+      err(R, code, `\`${rolle.id}\`: budget trägt weder \`max_turns\` noch \`max_work_steps\` — der Budget-Guard (D2) braucht eine der beiden Grenzen`);
+    }
     if (rolle.delegated) {
       if (!rolle.budget) err(R, 'fehlendes-budget', `\`${rolle.id}\`: delegated ist true, aber budget fehlt (D2 — Delegationen immer mit \`--max-turns\`)`);
     } else if (rolle.budget) {
