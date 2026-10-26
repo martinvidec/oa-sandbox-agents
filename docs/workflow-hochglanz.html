@@ -16,31 +16,81 @@
       color: white;
     }
     .container { max-width: 1400px; margin: 0 auto; }
-    .header { margin-bottom: 2rem; }
-    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .header {
+      position: sticky; top: 0; z-index: 10;
+      background: rgba(2, 6, 23, 0.92);
+      backdrop-filter: blur(8px);
+      padding: 0.75rem 0 0.9rem 0;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid #1e293b;
+    }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
     .pulse-dot { width: 12px; height: 12px; background: #22d3ee; border-radius: 50%; animation: pulse 2s infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
     h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
     .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
-    .diagram-note { color: #94a3b8; font-size: 0.8rem; margin-left: 1.75rem; margin-top: 0.25rem; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      margin-left: 1.75rem; margin-top: 0.4rem;
+      padding: 0.25rem 0.75rem; border-radius: 999px;
+      background: rgba(34, 211, 238, 0.12); border: 1px solid rgba(34, 211, 238, 0.35);
+      color: #67e8f9; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.02em;
+    }
+    .badge b { color: #a5f3fc; font-weight: 700; }
+    .legend-inline { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; margin: 0.75rem 0 0 1.75rem; }
+
+    /* ---- Tab-Leiste ---- */
+    .tab-bar {
+      display: flex; gap: 0.5rem; margin: 1rem 0 1.25rem 1.75rem; flex-wrap: wrap;
+    }
+    .tab-btn {
+      font-family: inherit; font-size: 0.8rem; font-weight: 600;
+      color: #94a3b8; background: rgba(15, 23, 42, 0.6);
+      border: 1px solid #1e293b; border-radius: 999px;
+      padding: 0.45rem 1rem; cursor: pointer;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+    .tab-btn:hover { color: #e2e8f0; border-color: #334155; }
+    .tab-btn.active {
+      color: #020617; background: #22d3ee; border-color: #22d3ee;
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
     h2 {
-      font-size: 1.1rem; font-weight: 700; margin: 2.5rem 0 1rem 0;
+      font-size: 1.1rem; font-weight: 700; margin: 0 0 1rem 0;
       color: #e2e8f0; border-left: 3px solid #22d3ee; padding-left: 0.75rem;
     }
+    .diagram-note { color: #94a3b8; font-size: 0.8rem; margin: 0 0 0.75rem 1.75rem; }
     .diagram-container {
       background: rgba(15, 23, 42, 0.5);
       border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto;
-    }
-    .diagram-container {
       background:
         radial-gradient(ellipse at top, rgba(34, 211, 238, 0.06), transparent 60%),
         linear-gradient(180deg, rgba(15, 23, 42, 0.7), rgba(2, 6, 23, 0.9));
       box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.06), 0 20px 40px -20px rgba(0, 0, 0, 0.6);
     }
+    .diagram-container img { display: block; margin: 0 auto; max-width: 100%; height: auto; border-radius: 0.5rem; }
     .mermaid { display: flex; justify-content: center; background: transparent; }
     .mermaid:not([data-processed]) { visibility: hidden; }
-    .mermaid svg { max-width: 100% !important; height: auto; }
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+    .mermaid svg { max-width: 100% !important; height: auto; background: transparent !important; }
+
+    /* Zusammengeklappte Sektionen (Legende/Hintergrund, ein <details> pro Thema) */
+    details.collapsible {
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid #1e293b; border-radius: 0.75rem;
+      margin: 0.75rem 0 0 1.75rem; overflow: hidden;
+    }
+    details.collapsible > summary {
+      cursor: pointer; padding: 0.7rem 1rem;
+      color: #cbd5e1; font-size: 0.8rem; font-weight: 600; list-style: none;
+    }
+    details.collapsible > summary::before { content: '▸ '; color: #22d3ee; }
+    details.collapsible[open] > summary::before { content: '▾ '; }
+    details.collapsible[open] > summary { border-bottom: 1px solid #1e293b; }
+    details.collapsible > .details-body { padding: 1rem 1.25rem; }
+
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
     .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
     .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
     .card-dot { width: 8px; height: 8px; border-radius: 50%; }
@@ -69,21 +119,18 @@
     }
     .rule b { color: #e2e8f0; display: block; margin-bottom: 0.3rem; font-size: 0.8rem; }
     .footer { text-align: center; margin-top: 2rem; color: #475569; font-size: 0.75rem; }
-    .legend-inline { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; margin: 0.75rem 0 0 1.75rem; }
-
-    /* Mermaid: Hintergrund kommt vom .diagram-container, Theme-Details in themeCSS (Script unten) */
-    .mermaid svg { background: transparent !important; }
   </style>
 </head>
 <body>
   <div class="container">
-    <!-- Header -->
+    <!-- Header: fixiert, Titel + aktiver-Workflow-Badge + Legende + Tab-Leiste -->
     <div class="header">
       <div class="header-row">
         <div class="pulse-dot"></div>
         <h1>OpenAustria Sandbox Agents — Multi-Agent Workflow</h1>
       </div>
       <p class="subtitle">KI-gestützte Software-Entwicklung mit GitHub als Rückgrat · Solo-Entwickler + Agententeam · Stand 2026-09-12 · 12 Pipeline-Zyklen validiert</p>
+      <span class="badge">Aktiver Workflow: <b>claude-pipeline</b></span>
       <div class="legend-inline">
         <span class="pill cyan">Martin — Owner</span>
         <span class="pill emerald">Hermes Lead — Orchestrator</span>
@@ -92,31 +139,60 @@
         <span class="pill rose">Reviewer — Claude Code</span>
         <span class="pill slate">GitHub CI</span>
       </div>
+
+      <!--
+        ============================================================
+        ERWEITERUNGSMUSTER: Neuer Workflow-Tab in 3 Schritten
+        ============================================================
+        1. Button in der Tab-Leiste unten ergänzen:
+           <button class="tab-btn" data-tab="<id>">Titel</button>
+        2. Panel als letztes .tab-panel ergänzen:
+           <section class="tab-panel" data-tab="<id>">
+             <h2>…</h2>
+             <div class="diagram-container">
+               <pre class="mermaid"> …flowchart… </pre>
+             </div>
+             <details class="collapsible"> …Legende… </details>
+           </section>
+        3. Fertig. Das Panel wird LAZY gerendert: beim ersten Aktivieren des Tabs
+           (renderPanel im Script unten — Mermaid misst Labels über das Layout und
+           braucht dazu ein sichtbares Element). data-tab von Button und Panel
+           muss übereinstimmen.
+        ============================================================
+      -->
+      <nav class="tab-bar" role="tablist" aria-label="Workflow-Diagramme">
+        <button class="tab-btn active" data-tab="ueberblick" role="tab" aria-selected="true">Überblick</button>
+        <button class="tab-btn" data-tab="claude-pipeline" role="tab" aria-selected="false">claude-pipeline</button>
+        <button class="tab-btn" data-tab="hermes-pipeline" role="tab" aria-selected="false">hermes-pipeline</button>
+        <button class="tab-btn" data-tab="dsl-validierung" role="tab" aria-selected="false">DSL-Validierung</button>
+        <button class="tab-btn" data-tab="bpmn" role="tab" aria-selected="false">BPMN</button>
+      </nav>
     </div>
 
-    <!-- ============ ORGANIGRAMM ============ -->
-    <h2>Akteure &amp; Organigramm</h2>
-    <div class="diagram-container">
+    <!-- ============ TAB 1: ÜBERBLICK (ORGANIGRAMM) ============ -->
+    <section class="tab-panel active" data-tab="ueberblick">
+      <h2>Akteure &amp; Organigramm</h2>
+      <div class="diagram-container">
       <pre class="mermaid">
 %%{init: {"flowchart":{"curve":"basis","nodeSpacing":60,"rankSpacing":70}}}%%
 flowchart TB
     subgraph OG1["👤 Mensch"]
-    MARTIN["👤 <b>Martin</b><br/>Owner · einziger Merge-Zugriff<br/><small>Telegram-DM / repo-Thread</small>"]:::martin
+    MARTIN["👤 <b>Martin</b><br/>Owner · einziger Merge-Zugriff<br/><span class="sub">Telegram-DM / repo-Thread</span>"]:::martin
     end
 
     subgraph OG2["🧠 Orchestrierung"]
-    LEAD["🧠 <b>Hermes Lead (Orchestrator)</b><br/><small>Telegram-Bot · default-Profil<br/>Nimmt Aufträge · legt Issues an<br/>delegiert · Draft→Ready · Cleanup</small>"]:::lead
+    LEAD["🧠 <b>Hermes Lead (Orchestrator)</b><br/><span class="sub">Telegram-Bot · default-Profil<br/>Nimmt Aufträge · legt Issues an<br/>delegiert · Draft→Ready · Cleanup</span>"]:::lead
     end
 
     subgraph OG3["⚒️ Ausführung"]
-    RESEARCH["🔬 <b>Researcher</b><br/><small>Hermes @research / @deep-research<br/>Recherche · Specs → docs/specs/</small>"]:::research
-    CODER["⚒️ <b>Coder — Claude Code</b><br/><small>headless · 1 Worktree pro Issue<br/>Implementiert · Draft-PR<br/>Budget: --max-turns</small>"]:::coder
-    REVIEW["🔍 <b>Reviewer — Claude Code</b><br/><small>2. Run · sauberer Kontext<br/>Befunde als PR-Kommentare<br/>kein Write/Edit · max 2 Schleifen</small>"]:::review
+    RESEARCH["🔬 <b>Researcher</b><br/><span class="sub">Hermes @research / @deep-research<br/>Recherche · Specs → docs/specs/</span>"]:::research
+    CODER["⚒️ <b>Coder — Claude Code</b><br/><span class="sub">headless · 1 Worktree pro Issue<br/>Implementiert · Draft-PR<br/>Budget: --max-turns</span>"]:::coder
+    REVIEW["🔍 <b>Reviewer — Claude Code</b><br/><span class="sub">2. Run · sauberer Kontext<br/>Befunde als PR-Kommentare<br/>kein Write/Edit · max 2 Schleifen</span>"]:::review
     end
 
     subgraph OG4["🐙 Infrastruktur"]
-    CI["⚙️ <b>GitHub CI</b><br/><small>YAML-Validierung<br/>Konventions-Checks<br/>grün = Merge-Voraussetzung</small>"]:::ci
-    GH["🐙 <b>GitHub</b><br/><small>Issues = Auftragsqueue (Templates)<br/>Labels: ready → in-progress → review<br/>Branches: docs/&lt;nr&gt;-&lt;slug&gt;<br/>AGENTS.md = Repo-Contract</small>"]:::github
+    CI["⚙️ <b>GitHub CI</b><br/><span class="sub">YAML-Validierung<br/>Konventions-Checks<br/>grün = Merge-Voraussetzung</span>"]:::ci
+    GH["🐙 <b>GitHub</b><br/><span class="sub">Issues = Auftragsqueue (Templates)<br/>Labels: ready → in-progress → review<br/>Branches: docs/&lt;nr&gt;-&lt;slug&gt;<br/>AGENTS.md = Repo-Contract</span>"]:::github
     end
 
     MARTIN -->|"Auftrag"| LEAD
@@ -139,11 +215,89 @@ flowchart TB
     classDef ci fill:#111827,stroke:#94a3b8,stroke-width:1.5px,color:#f1f5f9
     classDef github fill:#0b1220,stroke:#e2e8f0,stroke-width:1.5px,stroke-dasharray:4 3,color:#e2e8f0
       </pre>
-    </div>
+      </div>
+      <details class="collapsible">
+        <summary>Legende &amp; Akteure im Detail</summary>
+        <div class="details-body">
+          <div class="cards">
+      <div class="card">
+        <div class="card-header"><div class="card-dot cyan"></div><h3>Martin</h3></div>
+        <p class="role">Mensch · Owner · einzige Merge-Autorität</p>
+        <ul>
+          <li><b>Rolle:</b> Formuliert Aufträge, entscheidet über Merge (D1)</li>
+          <li><b>Kommunikation:</b> Telegram-DM oder repo-Thread</li>
+          <li><b>Merge-Regel:</b> nur bei grünem CI + abgeschlossenem Review</li>
+          <li><b>Human-in-the-Loop:</b> konzentriert auf den Merge — Agents mergen nie</li>
+        </ul>
+      </div>
 
-    <!-- ============ PIPELINE ============ -->
-    <h2>Pipeline (Swim-Lanes)</h2>
-    <div class="diagram-container">
+      <div class="card">
+        <div class="card-header"><div class="card-dot emerald"></div><h3>Hermes Lead (Orchestrator)</h3></div>
+        <p class="role">Hermes default-Profil am Telegram-Bot</p>
+        <ul>
+          <li><b>Aufnahme:</b> klärt Aufträge, stellt Rückfragen</li>
+          <li><b>Issues:</b> legt sie mit Template an (Ziel, AK, Scope, Agent-Hinweise)</li>
+          <li><b>Delegation:</b> Claude Code im eigenen Worktree, Budget-Caps</li>
+          <li><b>D7:</b> vollendet abgebrochene Runs (unverändert committen)</li>
+          <li><b>D8:</b> nennt die Basis-Branch bei abhängigen Issues</li>
+          <li><b>Cleanup:</b> Worktree + Branch nach dem Merge</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-dot violet"></div><h3>Researcher</h3></div>
+        <p class="role">Hermes @research (schnell) / @deep-research (orchestriert)</p>
+        <ul>
+          <li><b>Aufgabe:</b> Recherche, Marktanalyse, Spec-Vorarbeit</li>
+          <li><b>Output:</b> docs/specs/&lt;feature&gt;.md vor dem Issue</li>
+          <li><b>Trigger:</b> größere Features (Spec-Gateway im Lead)</li>
+          <li><b>Vertrag:</b> report.md + quellen.md, Deutsch, Suchdatum</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-dot amber"></div><h3>Coder</h3></div>
+        <p class="role">Claude Code headless · 1 Worktree pro Issue</p>
+        <ul>
+          <li><b>Eingang:</b> Issue mit agent:ready, Pflichtlektüre AGENTS.md</li>
+          <li><b>Implementiert:</b> im eigenen Worktree, Branch docs/&lt;n&gt;-&lt;slug&gt;</li>
+          <li><b>Abschluss:</b> push -u origin HEAD, Draft-PR mit Closes #N</li>
+          <li><b>CI grün →</b> setzt agent:review selbst</li>
+          <li><b>Sync-Run (D8):</b> fetch + merge origin/main zusätzlich freigegeben</li>
+          <li><b>Budget:</b> --max-turns; kein dangerously-skip</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-dot rose"></div><h3>Reviewer</h3></div>
+        <p class="role">Claude Code · 2. Run · sauberer Kontext</p>
+        <ul>
+          <li><b>Prüft:</b> AK-Erfüllung, D3 Scope-Treue, D4 DoD, Widerspruchsfreiheit</li>
+          <li><b>Output:</b> Befunde mit Schweregrad als PR-Kommentar</li>
+          <li><b>Kein</b> Write/Edit — nur lesend + kommentieren</li>
+          <li><b>Schleifen:</b> max 2 Fix-Run-Runden, danach needs-human</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-dot slate"></div><h3>GitHub CI</h3></div>
+        <p class="role">GitHub Actions · automatisiertes QS-Gate</p>
+        <ul>
+          <li><b>Checks:</b> YAML-Validierung (Templates, Workflows)</li>
+          <li><b>Konventionen:</b> AGENTS.md/CLAUDE.md vorhanden</li>
+          <li><b>Trigger:</b> pull_request + push auf main</li>
+          <li><b>Grün</b> = Voraussetzung für Draft→Ready und Merge</li>
+        </ul>
+      </div>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- ============ TAB 2: CLAUDE-PIPELINE ============ -->
+    <section class="tab-panel" data-tab="claude-pipeline">
+      <h2>Pipeline (Swim-Lanes)</h2>
+      <div class="diagram-container">
       <pre class="mermaid">
 %%{init: {"flowchart":{"nodeSpacing":40,"rankSpacing":55,"curve":"basis","useMaxWidth":false}}}%%
 flowchart TD
@@ -222,49 +376,64 @@ flowchart TD
     classDef d7 fill:#0c1a33,stroke:#60a5fa,stroke-width:1.5px,color:#eff6ff
     classDef gate fill:#1e293b,stroke:#cbd5e1,stroke-width:1.5px,color:#f8fafc
       </pre>
-    </div>
+      </div>
+      <details class="collapsible">
+        <summary>Legende (Farben wie in der seitenweiten Legende im Header)</summary>
+        <div class="details-body">
+          <div class="legend-inline" style="margin-left:0">
+            <span class="pill cyan">Martin</span>
+            <span class="pill emerald">Hermes Lead</span>
+            <span class="pill violet">Researcher</span>
+            <span class="pill amber">Coder</span>
+            <span class="pill rose">Reviewer</span>
+            <span class="pill slate">GitHub CI / Gates</span>
+          </div>
+        </div>
+      </details>
+    </section>
 
-    <!-- ============ DSL-VALIDIERUNG ============ -->
-    <h2>Wie wird der Workflow mit der DSL validiert?</h2>
-    <p class="diagram-note">Farben dieses Diagramms: cyan = CI/Regel 1, violet = DSL-Dateien, amber = Validierung, rot = Befunde, grün = OK — abweichend von der seitenweiten Legende.</p>
-    <div class="diagram-container">
+    <!-- ============ TAB 3: DSL-VALIDIERUNG ============ -->
+    <section class="tab-panel" data-tab="dsl-validierung">
+      <h2>Wie wird der Workflow mit der DSL validiert?</h2>
+      <p class="diagram-note">Farben dieses Diagramms: cyan = CI/Regel 1, violet = DSL-Dateien, amber = Validierung, rot = Befunde, grün = OK — abweichend von der seitenweiten Legende.</p>
+      <div class="diagram-container">
       <pre class="mermaid">
 %%{init: {"flowchart":{"nodeSpacing":45,"rankSpacing":60,"curve":"basis","useMaxWidth":false}}}%%
 flowchart TB
     subgraph DSL1["📜 DSL — workflow/&lt;id&gt;/"]
         direction LR
-        REG["<b>registry.yaml</b><br/><small>Instanzen · genau ein active: true</small>"]:::dslfile
-        ROLES["<b>workflow/&lt;id&gt;/roles.yaml</b><br/><small>Rollen · Tool-Sets · Budgets</small>"]:::dslfile
-        STATES["<b>workflow/&lt;id&gt;/states.yaml</b><br/><small>Labels · Übergänge</small>"]:::dslfile
-        RULES["<b>workflow/&lt;id&gt;/rules.yaml</b><br/><small>Regeln D1–D8 · Fakten</small>"]:::dslfile
-        PIPE["<b>workflow/&lt;id&gt;/pipeline.yaml</b><br/><small>Schritte der Pipeline</small>"]:::dslfile
+        REG["<b>registry.yaml</b><br/><span class="sub">Instanzen · genau ein active: true</span>"]:::dslfile
+        ROLES["<b>workflow/&lt;id&gt;/roles.yaml</b><br/><span class="sub">Rollen · Tool-Sets · Budgets</span>"]:::dslfile
+        STATES["<b>workflow/&lt;id&gt;/states.yaml</b><br/><span class="sub">Labels · Übergänge</span>"]:::dslfile
+        RULES["<b>workflow/&lt;id&gt;/rules.yaml</b><br/><span class="sub">Regeln D1–D8 · Fakten</span>"]:::dslfile
+        PIPE["<b>workflow/&lt;id&gt;/pipeline.yaml</b><br/><span class="sub">Schritte der Pipeline</span>"]:::dslfile
     end
 
     subgraph DSL2["⚙️ scripts/validate-workflow.mjs"]
         direction TB
-        E1["<b>Ebene 1 — Schema</b> (ajv)<br/><small>registry.yaml + 4 Instanz-Dateien<br/>· Referenzauflösung</small>"]:::script
-        E2["<b>Ebene 2 — Konsistenz-Linter</b><br/><small>2a Wildcard-Sicherheit · 2b Zustandsmaschine<br/>2c D2-Prosa ↔ roles.yaml · 2d Regeln · 2e Pipeline</small>"]:::script
-        ST["<b>Selbsttest</b><br/><small>&gt;150 Fälle, beim Ausbau wachsend · läuft bei jedem Lauf mit<br/>Melder + Gegenrichtung</small>"]:::script
+        E1["<b>Ebene 1 — Schema</b> (ajv)<br/><span class="sub">registry.yaml + 4 Instanz-Dateien<br/>· Referenzauflösung</span>"]:::script
+        E2["<b>Ebene 2 — Konsistenz-Linter</b><br/><span class="sub">2a Wildcard-Sicherheit · 2b Zustandsmaschine<br/>2c D2-Prosa ↔ roles.yaml · 2d Regeln · 2e Pipeline</span>"]:::script
+        ST["<b>Selbsttest</b><br/><span class="sub">&gt;150 Fälle, beim Ausbau wachsend · läuft bei jedem Lauf mit<br/>Melder + Gegenrichtung</span>"]:::script
     end
 
     subgraph DSL3["📄 Generierung — render-workflow.mjs"]
         direction LR
-        GEN["<b>render-workflow.mjs --check</b><br/><small>generiert == eingecheckt</small>"]:::script
-        WF["<b>WORKFLOW.md</b><br/><small>Rollen-, Label-, Übergangs-,<br/>Regel- und Pipeline-Tabelle</small>"]:::agents
-        AG["<b>AGENTS.md</b><br/><small>aktiv-Block zwischen<br/>dsl:active-workflow-Markern</small>"]:::agents
+        GEN["<b>render-workflow.mjs --check</b><br/><span class="sub">generiert == eingecheckt</span>"]:::script
+        WF["<b>WORKFLOW.md</b><br/><span class="sub">Rollen-, Label-, Übergangs-,<br/>Regel- und Pipeline-Tabelle</span>"]:::agents
+        AG["<b>AGENTS.md</b><br/><span class="sub">aktiv-Block zwischen<br/>dsl:active-workflow-Markern</span>"]:::agents
     end
 
     subgraph DSL4["🏁 Ergebnis"]
         direction LR
-        OK(["<b>exit 0 — OK</b><br/><small>Warnungen erlaubt<br/>CI-Beleg = DSL-Beleg</small>"]):::ok
-        FAIL["<b>exit 1 — Befunde</b><br/><small>verbotener-eintrag · wildcard-mittig<br/>fakt-quelle-abweichend<br/>ueberschrift-fehlt · ueberschrift-satzpunkt</small>"]:::befund
-        FIX["<b>Befunde beheben · neu pushen</b><br/><small>kein agent:review, solange rot</small>"]:::befund
+        OK(["<b>exit 0 — OK</b><br/><span class="sub">Warnungen erlaubt<br/>CI-Beleg = DSL-Beleg</span>"]):::ok
+        FAIL["<b>exit 1 — Befunde</b><br/><span class="sub">verbotener-eintrag · wildcard-mittig<br/>fakt-quelle-abweichend<br/>ueberschrift-fehlt · ueberschrift-satzpunkt</span>"]:::befund
+        FIX["<b>Befunde beheben · neu pushen</b><br/><span class="sub">kein agent:review, solange rot</span>"]:::befund
     end
 
     subgraph DSL5["🐙 CI + Regel 1"]
         direction LR
-        CIJ["<b>CI-Job workflow-dsl</b><br/><small>pull_request + push auf main<br/>2 Prüfschritte · NODE_PATH<br/>Validator + render-workflow --check</small>"]:::ci
-        SELF["<b>DSL_self_validation</b><br/><small>Regel 1 in rules.yaml<br/>jede Workflow-Änderung<br/>braucht einen grünen Lauf</small>"]:::regel
+        CIJ["<b>CI-Job workflow-dsl</b><br/><span class="sub">pull_request + push auf main<br/>2 Prüfschritte · NODE_PATH<br/>Validator + render-workflow --check</span>"]:::ci
+        SELF["<b>DSL_self_validation</b><br/><span class="sub">Regel 1 in rules.yaml<br/>jede Workflow-Änderung<br/>braucht einen grünen Lauf</span>"]:::regel
     end
 
     SELF -.->|"fordert grünen Lauf"| CIJ
@@ -296,12 +465,26 @@ flowchart TB
     classDef befund fill:#2e0f1a,stroke:#fb7185,stroke-width:1.5px,color:#fff1f2
     classDef regel fill:#082f3a,stroke:#22d3ee,stroke-width:1.5px,color:#ecfeff
       </pre>
-    </div>
+      </div>
+      <details class="collapsible">
+        <summary>Legende (Eigenfarbwelt dieses Diagramms)</summary>
+        <div class="details-body">
+          <div class="legend-inline" style="margin-left:0">
+            <span class="pill cyan">CI / Regel 1</span>
+            <span class="pill violet">DSL-Dateien</span>
+            <span class="pill amber">Validierung / Werkzeuge</span>
+            <span class="pill rose">Befunde</span>
+            <span class="pill emerald">OK</span>
+          </div>
+        </div>
+      </details>
+    </section>
 
-    <!-- ============ HERMES-PIPELINE (FALLBACK) ============ -->
-    <h2>Workflow hermes-pipeline (Claude-Limit-Fallback)</h2>
-    <p class="diagram-note">Zweiter Workflow (Issue #58): dieselbe Pipeline wie claude-pipeline, aber Coder- und Reviewer-Rolle laufen als Hermes-Sub-Agenten (delegate_task, Lead-delegiert, isolierter Kontext). Farben wie im Diagramm darüber; Ampel-Logik: amber = Sub-Agent-Runs, rot = Review, grün = OK.</p>
-    <div class="diagram-container">
+    <!-- ============ TAB 4: HERMES-PIPELINE ============ -->
+    <section class="tab-panel" data-tab="hermes-pipeline">
+      <h2>Workflow hermes-pipeline (Claude-Limit-Fallback)</h2>
+      <p class="diagram-note">Zweiter Workflow (Issue #58): dieselbe Pipeline wie claude-pipeline, aber Coder- und Reviewer-Rolle laufen als Hermes-Sub-Agenten (delegate_task, Lead-delegiert, isolierter Kontext). Farben wie im Diagramm darüber; Ampel-Logik: amber = Sub-Agent-Runs, rot = Review, grün = OK.</p>
+      <div class="diagram-container">
       <pre class="mermaid">
 %%{init: {"flowchart":{"nodeSpacing":45,"rankSpacing":60,"curve":"basis","useMaxWidth":false}}}%%
 flowchart TB
@@ -351,85 +534,36 @@ flowchart TB
     classDef gate fill:#1e293b,stroke:#cbd5e1,stroke-width:1.5px,color:#f8fafc
     classDef regel fill:#082f3a,stroke:#22d3ee,stroke-width:1.5px,color:#ecfeff
       </pre>
-    </div>
-
-    <!-- ============ AKTEURE ============ -->
-    <h2>Akteure im Detail</h2>
-    <div class="cards">
-      <div class="card">
-        <div class="card-header"><div class="card-dot cyan"></div><h3>Martin</h3></div>
-        <p class="role">Mensch · Owner · einzige Merge-Autorität</p>
-        <ul>
-          <li><b>Rolle:</b> Formuliert Aufträge, entscheidet über Merge (D1)</li>
-          <li><b>Kommunikation:</b> Telegram-DM oder repo-Thread</li>
-          <li><b>Merge-Regel:</b> nur bei grünem CI + abgeschlossenem Review</li>
-          <li><b>Human-in-the-Loop:</b> konzentriert auf den Merge — Agents mergen nie</li>
-        </ul>
       </div>
+      <details class="collapsible">
+        <summary>Legende (Ampel-Logik: amber = Sub-Agent-Runs, rot = Review, grün = OK)</summary>
+        <div class="details-body">
+          <div class="legend-inline" style="margin-left:0">
+            <span class="pill emerald">Hermes Lead</span>
+            <span class="pill amber">Sub-Agent Coder / Sync-Run</span>
+            <span class="pill rose">Sub-Agent Reviewer</span>
+            <span class="pill slate">GitHub CI / Gates</span>
+            <span class="pill cyan">Martin (Merge, D1)</span>
+          </div>
+        </div>
+      </details>
+    </section>
 
-      <div class="card">
-        <div class="card-header"><div class="card-dot emerald"></div><h3>Hermes Lead (Orchestrator)</h3></div>
-        <p class="role">Hermes default-Profil am Telegram-Bot</p>
-        <ul>
-          <li><b>Aufnahme:</b> klärt Aufträge, stellt Rückfragen</li>
-          <li><b>Issues:</b> legt sie mit Template an (Ziel, AK, Scope, Agent-Hinweise)</li>
-          <li><b>Delegation:</b> Claude Code im eigenen Worktree, Budget-Caps</li>
-          <li><b>D7:</b> vollendet abgebrochene Runs (unverändert committen)</li>
-          <li><b>D8:</b> nennt die Basis-Branch bei abhängigen Issues</li>
-          <li><b>Cleanup:</b> Worktree + Branch nach dem Merge</li>
-        </ul>
+    <!-- ============ TAB 5: BPMN (PNG-EINBETTUNG) ============ -->
+    <section class="tab-panel" data-tab="bpmn">
+      <h2>BPMN-Übersicht</h2>
+      <p class="diagram-note">Eingebettet aus docs/workflow.png (bestehendes Rendering, kein neues Rendern).</p>
+      <div class="diagram-container">
+        <img src="workflow.png" alt="BPMN-Übersicht des aktiven Workflows (docs/workflow.png)">
       </div>
+    </section>
 
-      <div class="card">
-        <div class="card-header"><div class="card-dot violet"></div><h3>Researcher</h3></div>
-        <p class="role">Hermes @research (schnell) / @deep-research (orchestriert)</p>
-        <ul>
-          <li><b>Aufgabe:</b> Recherche, Marktanalyse, Spec-Vorarbeit</li>
-          <li><b>Output:</b> docs/specs/&lt;feature&gt;.md vor dem Issue</li>
-          <li><b>Trigger:</b> größere Features (Spec-Gateway im Lead)</li>
-          <li><b>Vertrag:</b> report.md + quellen.md, Deutsch, Suchdatum</li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <div class="card-header"><div class="card-dot amber"></div><h3>Coder</h3></div>
-        <p class="role">Claude Code headless · 1 Worktree pro Issue</p>
-        <ul>
-          <li><b>Eingang:</b> Issue mit agent:ready, Pflichtlektüre AGENTS.md</li>
-          <li><b>Implementiert:</b> im eigenen Worktree, Branch docs/&lt;n&gt;-&lt;slug&gt;</li>
-          <li><b>Abschluss:</b> push -u origin HEAD, Draft-PR mit Closes #N</li>
-          <li><b>CI grün →</b> setzt agent:review selbst</li>
-          <li><b>Sync-Run (D8):</b> fetch + merge origin/main zusätzlich freigegeben</li>
-          <li><b>Budget:</b> --max-turns; kein dangerously-skip</li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <div class="card-header"><div class="card-dot rose"></div><h3>Reviewer</h3></div>
-        <p class="role">Claude Code · 2. Run · sauberer Kontext</p>
-        <ul>
-          <li><b>Prüft:</b> AK-Erfüllung, D3 Scope-Treue, D4 DoD, Widerspruchsfreiheit</li>
-          <li><b>Output:</b> Befunde mit Schweregrad als PR-Kommentar</li>
-          <li><b>Kein</b> Write/Edit — nur lesend + kommentieren</li>
-          <li><b>Schleifen:</b> max 2 Fix-Run-Runden, danach needs-human</li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <div class="card-header"><div class="card-dot slate"></div><h3>GitHub CI</h3></div>
-        <p class="role">GitHub Actions · automatisiertes QS-Gate</p>
-        <ul>
-          <li><b>Checks:</b> YAML-Validierung (Templates, Workflows)</li>
-          <li><b>Konventionen:</b> AGENTS.md/CLAUDE.md vorhanden</li>
-          <li><b>Trigger:</b> pull_request + push auf main</li>
-          <li><b>Grün</b> = Voraussetzung für Draft→Ready und Merge</li>
-        </ul>
-      </div>
-    </div>
-
-    <!-- ============ DIREKTIVEN ============ -->
-    <h2>Direktiven (AGENTS.md D1–D8)</h2>
-    <div class="rules-grid">
+    <!-- ============ HINTERGRUND (ZUSAMMENGEKLAPPT) ============ -->
+    <h2 style="margin-top:2.5rem">Hintergrund</h2>
+    <details class="collapsible">
+      <summary>Direktiven (AGENTS.md D1–D8)</summary>
+      <div class="details-body">
+        <div class="rules-grid">
       <div class="rule"><b>D1 — Merge nur durch Martin</b>Bei vollständig grünem CI. Agenten mergen nie (gh pr merge verboten).</div>
       <div class="rule"><b>D2 — Budget-Guards</b>--max-turns pro Run; enge allowedTools; kein blankes Bash(git *); Push nur als exakte Form git push -u origin HEAD.</div>
       <div class="rule"><b>D3 — Kleine PRs</b>Ein PR = ein Issue. Keine Scope-Ausweitung ohne neues Issue.</div>
@@ -438,11 +572,13 @@ flowchart TB
       <div class="rule"><b>D6 — Keine eigene Infrastruktur</b>Nur GitHub + lokale Agenten.</div>
       <div class="rule"><b>D7 — Abgebrochener Coder-Run</b>Lead prüft Worktree (git status/diff/log gegen Basis). Vollständig → Lead vollendet Commit/Push/PR. Unvollständig → Fix-Run. MERGE_HEAD → needs-human.</div>
       <div class="rule"><b>D8 — Abhängige Issues</b>Baut ein Issue auf einem offenen PR auf → Worktree von dessen Branch statt origin/main. Basis steht in den Agent-Hinweisen. Nach Vorgänger-Merge: Sync (main holen).</div>
-    </div>
-
-    <!-- ============ KPI / VALIDIERUNG ============ -->
-    <h2>Validierung (Dogfooding)</h2>
-    <div class="cards">
+        </div>
+      </div>
+    </details>
+    <details class="collapsible">
+      <summary>Validierung (Dogfooding)</summary>
+      <div class="details-body">
+        <div class="cards">
       <div class="card">
         <div class="card-header"><div class="card-dot emerald"></div><h3>12 Pipeline-Zyklen</h3></div>
         <ul>
@@ -472,7 +608,9 @@ flowchart TB
           <li>• MERGE_HEAD → needs-human statt Konfliktmarker-Commit</li>
         </ul>
       </div>
-    </div>
+        </div>
+      </div>
+    </details>
 
     <!-- Footer -->
     <p class="footer">
@@ -481,20 +619,48 @@ flowchart TB
   </div>
 
   <script>
+    // ---- Tab-Navigation (Vanilla-JS, kein Framework, kein Build-Schritt) ----
+    // Genau ein Diagramm je Tab. Jedes Panel wird LAZY gerendert: erst beim ersten
+    // Aktivieren (mermaid misst Label-Größen über das Layout — in ausgeblendeten
+    // Containern funktioniert das nicht zuverlässig). Danach wird nur umgeschaltet.
+    let renderedTabs = new Set();
+    async function renderPanel(tabId) {
+      if (renderedTabs.has(tabId)) return;
+      renderedTabs.add(tabId);
+      await mermaid.run({ querySelector: `.tab-panel[data-tab="${tabId}"] .mermaid` });
+    }
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => {
+          const active = b === btn;
+          b.classList.toggle('active', active);
+          b.setAttribute('aria-selected', String(active));
+        });
+        document.querySelectorAll('.tab-panel').forEach(p =>
+          p.classList.toggle('active', p.dataset.tab === btn.dataset.tab));
+        renderPanel(btn.dataset.tab);
+      });
+    });
+
     // Premium-Dark-Theme: 'base' ist das einzige Mermaid-Theme, bei dem themeVariables vollständig greifen.
+    // ZENTRALE Schrift-Skala für ALLE Diagramme (keine per-Diagramm-Streuung):
+    //   Node-Text / Cluster-Titel: 16px (themeVariables.fontSize)
+    //   Edge-Labels:               14px (themeCSS .edgeLabel)
+    //   Sub-Text in Nodes (<span class="sub">, ersetzt die <small>-Streuung): 13px
     const themeCSS = `
       .node rect, .node polygon, .node circle, .node path.basic {
         filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.55));
       }
       .node rect { rx: 10px; ry: 10px; }
-      .nodeLabel { font-weight: 500; line-height: 1.45; }
+      .nodeLabel { font-weight: 500; line-height: 1.45; font-size: 16px; }
       .nodeLabel b { font-weight: 700; letter-spacing: -0.01em; }
-      .nodeLabel small { color: #94a3b8; font-weight: 400; }
+      .nodeLabel .sub { font-size: 13px; color: #94a3b8; font-weight: 400; }
       .cluster rect {
         rx: 16px; ry: 16px;
         filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.45));
       }
       .cluster .cluster-label, .cluster .nodeLabel { font-weight: 700; color: #e2e8f0; letter-spacing: 0.01em; }
+      .cluster .cluster-label { font-size: 16px; }
       .cluster[id*="SL1"] > rect { stroke: #22d3ee66; fill: #22d3ee0a; }
       .cluster[id*="SL2"] > rect { stroke: #34d39966; fill: #34d3990a; }
       .cluster[id*="SL3"] > rect { stroke: #fbbf2466; fill: #fbbf240a; }
@@ -512,7 +678,7 @@ flowchart TB
       .cluster[id*="DSL4"] > rect { stroke: #34d39966; fill: #34d3990a; }
       .cluster[id*="DSL5"] > rect { stroke: #22d3ee66; fill: #22d3ee0a; }
       .flowchart-link { stroke-width: 1.6px; }
-      .edgeLabel, .edgeLabel p, .labelBkg { background-color: #0f172a; color: #cbd5e1; font-weight: 500; }
+      .edgeLabel, .edgeLabel p, .labelBkg { background-color: #0f172a; color: #cbd5e1; font-weight: 500; font-size: 14px; }
       .edgeLabel rect { fill: #0f172a; opacity: 1; }
       marker path, .marker { fill: #64748b; stroke: #64748b; }
     `;
@@ -525,7 +691,7 @@ flowchart TB
         darkMode: true,
         background: '#020617',
         fontFamily: '"JetBrains Mono", monospace',
-        fontSize: '14px',
+        fontSize: '16px',
         textColor: '#e2e8f0',
         primaryColor: '#0f172a',
         primaryBorderColor: '#334155',
@@ -548,11 +714,12 @@ flowchart TB
       },
       themeCSS: themeCSS,
       flowchart: {
+        // Zentrale Layout-Basis: feste SVG-Breite (kein useMaxWidth-Streuung je Diagramm).
         nodeSpacing: 60,
         rankSpacing: 70,
         curve: 'basis',
-        padding: 18,
-        useMaxWidth: true
+        padding: 12,
+        useMaxWidth: false
       },
       securityLevel: 'loose'
     });
@@ -560,11 +727,11 @@ flowchart TB
     // Erst rendern, wenn JetBrains Mono geladen ist: Mermaid misst die Label-Größen beim Rendern,
     // mit Fallback-Font würden Labels danach abgeschnitten.
     const fontsReady = Promise.all([
-      document.fonts.load('400 14px "JetBrains Mono"'),
-      document.fonts.load('700 14px "JetBrains Mono"')
+      document.fonts.load('400 16px "JetBrains Mono"'),
+      document.fonts.load('700 16px "JetBrains Mono"')
     ]).catch(() => {});
     Promise.race([fontsReady, new Promise(r => setTimeout(r, 3000))])
-      .then(() => mermaid.run({ querySelector: '.mermaid' }));
+      .then(() => renderPanel(document.querySelector('.tab-btn.active').dataset.tab));
   </script>
 </body>
 </html>

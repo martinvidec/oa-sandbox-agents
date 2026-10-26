@@ -3,7 +3,8 @@
 //
 //   node scripts/verify-mermaid.mjs [html-datei] [--out <verzeichnis>]
 //
-// Prüft je .mermaid-Block: SVG gerendert, Mermaid-Error-Boxen, Bounding-Box-Kollisionen
+// Prüft je .mermaid-Block (bei Tab-Struktur wird das zugehörige Panel vor Messung
+// und Screenshot aktiviert — Diagramme rendern dort lazy): SVG gerendert, Mermaid-Error-Boxen, Bounding-Box-Kollisionen
 // (Node×Node, Kantenlabel×Node, Kantenlabel×Kantenlabel, Cluster-Titel×Node), abgeschnittene
 // Labels; dazu Konsolenfehler der Seite. Schreibt Screenshots und einen JSON-Report.
 // Exit-Code: 0 = keine Befunde, 1 = Befunde, 2 = Setup-/Aufruf-/Laufzeitfehler.
@@ -68,24 +69,44 @@ try {
   page.on('pageerror', e => consoleErrors.push(String(e)));
   await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'networkidle' });
 
-  // Fertig gerendert: jeder .mermaid-Block hat ein SVG mit Inhalt (Mermaid legt das SVG erst leer an)
-  try {
-    await page.waitForFunction(() => {
-      const blocks = document.querySelectorAll('.mermaid');
-      return blocks.length > 0 && [...blocks].every(b => b.querySelector('svg')?.children.length > 0);
-    }, null, { timeout: 30000 });
-  } catch {
-    renderTimeout = true;
-  }
+  // Fertig gerendert wird je Diagramm geprüft (Tabs rendern LAZY — erst beim
+  // Aktivieren des Panels), siehe Schleife unten.
 
-  diagrams = await page.evaluate(() => {
+  // Tab-Struktur: Liegt ein .mermaid-Block in einem ausgeblendeten .tab-panel
+  // (workflow-hochglanz.html: genau ein Diagramm je Tab), wird das Panel vor der
+  // Messung durch Klick auf den zugehörigen Tab-Button aktiviert und auf sein
+  // SVG gewartet (Lazy-Rendering beim ersten Aktivieren).
+  const activateTab = async (idx) => {
+    const tab = await page.evaluate((i) => {
+      const m = document.querySelectorAll('.mermaid')[i];
+      if (!m) return null;
+      const panel = m.closest('.tab-panel');
+      if (!panel || getComputedStyle(panel).display !== 'none') return null;
+      const btn = document.querySelector(`.tab-btn[data-tab="${panel.dataset.tab}"]`);
+      if (!btn) return null;
+      btn.click();
+      return panel.dataset.tab;
+    }, idx);
+    if (!tab) return;
+    try {
+      await page.waitForFunction((i) => {
+        const m = document.querySelectorAll('.mermaid')[i];
+        return !!m && !!m.closest('.tab-panel.active') && !!m.querySelector('svg')?.children.length;
+      }, idx, { timeout: 30000 });
+    } catch {
+      renderTimeout = true;
+    }
+  };
+
+  const measureDiagram = (idx) => {
     const inter = (a, b, pad = 0) =>
       a.left < b.right - pad && b.left < a.right - pad && a.top < b.bottom - pad && b.top < a.bottom - pad;
     // Überlappungsmaß: Breite × Höhe der Schnittfläche in px
     const overlap = (a, b) =>
       `${(Math.min(a.right, b.right) - Math.max(a.left, b.left)).toFixed(0)}x${(Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)).toFixed(0)}px`;
     const out = [];
-    document.querySelectorAll('.mermaid').forEach((m, idx) => {
+    document.querySelectorAll('.mermaid').forEach((m, i) => {
+      if (i !== idx) return;
       const svg = m.querySelector('svg');
       const r = { diagram: idx + 1, svg: !!svg, errorBoxes: 0, nodes: 0, edges: 0, edgeLabels: 0, clusters: 0,
         nodeOverlaps: [], labelNodeOverlaps: [], labelLabelOverlaps: [], clippedLabels: [], clusterTitleOverlaps: [] };
@@ -121,12 +142,22 @@ try {
       });
       out.push(r);
     });
-    return out;
-  });
+    return out[0] || null;
+  };
+
+  // Je Diagramm: zugehöriges Tab aktivieren, dann messen und Screenshots machen.
+  diagrams = [];
+  const blockCount = await page.evaluate(() => document.querySelectorAll('.mermaid').length);
+  for (let i = 0; i < blockCount; i++) {
+    await activateTab(i);
+    const r = await page.evaluate(measureDiagram, i);
+    if (r) diagrams.push(r);
+  }
 
   // Screenshots je .mermaid-Block — verify-diagram-<n> entspricht "diagram": n im Report
   const targets = await page.$$('.mermaid');
   for (let i = 0; i < targets.length; i++) {
+    await activateTab(i);
     const p = path.join(outDir, `verify-diagram-${i + 1}.png`);
     await targets[i].screenshot({ path: p });
     screenshots.push(p);
