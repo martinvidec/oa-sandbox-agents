@@ -10,7 +10,7 @@
 #   runtime_checkable — deklariert pro Regel, ob der Runtime-Replay
 #             (scripts/replay-workflow.mjs, Ebene 3, Spec § 5.5) sie aus den
 #             beobachtbaren GitHub-/Git-Daten eines gemergten Zyklus subsumieren kann:
-#             `true` mit pflichtigem `check_hint`, `false` als ehrlich deklarierte Lücke —
+#             `true` mit Pflicht-`check_hint`, `false` als ehrlich deklarierte Lücke —
 #             nie als stilles Schweigen (Spec § 3, Ebene 3).
 #   source  — die Belegstelle: `agents_md` nennt die **fett gesetzte Überschrift wörtlich**
 #             (Querverweis-Konvention von AGENTS.md), `doc` eine andere Stelle im Repo.

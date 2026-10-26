@@ -66,7 +66,8 @@ Der Lead ist Ausführer der DSL, nicht Interpret der Prosa.
    bleibt Handtext.
 4. CI erweitert: validate-workflow im ci.yml-Workflow.
 5. Runtime-Replay (Ebene 3) NICHT in diesem MVP — eigenes Folge-Issue (braucht
-   Session-Log-Anbindung).
+   Session-Log-Anbindung). *(seit #60 erledigt, s. § 5.5 — die Umsetzung kam ohne die
+   Session-Log-Anbindung aus; das Bullet betrifft nur das ursprüngliche MVP)*
 
 ### 5.5 Runtime-Replay (Ebene 3) — Status
 

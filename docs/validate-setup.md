@@ -152,22 +152,40 @@ Der Runtime-Replay (Ebene 3) liest pro gemergtem PR:
 - `gh pr view <n> --json …` — PR-Metadaten (Body, Merge-Actor, Head-Branch),
 - `gh api repos/<owner>/<repo>/issues/<n>/timeline` — die Timeline des PRs (Kommentare mit
   Zeitstempeln, `ready_for_review`, `merged` samt Merge-Actor) **und** die des gebundenen
-  Issues (aus `Closes #N`) für die Label-Zustandsübergänge — Labels hängen am Issue,
+  Issues für die Label-Zustandsübergänge — Labels hängen am Issue. Die Issue-Timeline wird
+  unabhängig von der Closes-Zählung geladen: über das einzelne `Closes #N`, sonst über ein
+  eindeutiges `cross-referenced`-Event der PR-Timeline; bleibt beides aus (D3-Verstoß mit
+  0 oder ≥2 `Closes`-Formen ohne eindeutige Zuordnung), erscheint die Sequenzprüfung als
+  `nicht-pruefbar` — nicht als kaskadierende Sequenz-Fehler,
 - lokal `git worktree list` / `git branch --list` — Ist-Zustand für `cleanup_after_merge`.
 
 Daraus leitet das Skript die gelaufene Zustandssequenz ab und subsumiert **nur** die Regeln mit
 `runtime_checkable: true` (D1 Merge-Actor, D3 Closes-Zählung, D4 CI-Beleg vor `agent:review`,
-Cleanup-Reste). Alle übrigen Regeln erscheinen als `nicht-pruefbar`-Befunde samt Begründung —
+Cleanup-Reste) — dazu wird die Label-Sequenz **vollständig** gegen den Übergangs-Graph aus
+`states.yaml` geprüft: Jeder beobachtete Übergang muss im Graph existieren, übersprungene
+Stationen werden als `label-sequenz` gemeldet, der Übergang in den Endzustand verlangt den
+review-Zustand (`merge-ohne-review`), und Review-Schleifen werden gegen die Invariante
+`max_review_loops` gezählt (`review-schleifen-ueberschritten`). Zeitstempel-Gleichstände
+werden über die Timeline-Position aufgelöst (stabile Reihenfolge, nicht Alphabet); ein
+`unlabeled` ist Teil des normalen Label-Wechsels und hebt die besuchte Station nicht fort.
+Der CI-Beleg (D4) verlangt Erfolgskontext: „CI grün …“ oder Run-ID zusammen mit
+`conclusion success`/Erfolgsausdruck — eine Run-ID allein (etwa „Run 123 ist fehlgeschlagen“)
+zählt nicht. Alle übrigen Regeln erscheinen als `nicht-pruefbar`-Befunde samt Begründung —
 ebenso einzelne Komponenten prüfbarer Regeln, deren Belege historisch nicht mehr erreichbar sind
 (Draft-Status zum Label-Zeitpunkt, Rollenzuordnung des Merge-Actors ohne Login-Mapping,
 Entfernungs-Zeitpunkt des Cleanups). Kein stiller Skip: Was nicht geprüft wird, sagt das Skript.
+Gilt auch für die Timeline-Daten selbst: Lässt sich die rohe `--paginate`-Antwort als
+NDJSON-Folge nicht sauber trennen und parsen, bricht der Lauf mit exit 2 ab (Datenmangel),
+statt Teildaten still weiterzuverwenden.
 
 Befundmodell wie der Validator (`id`, `severity`, `rule`, `code`, `message`); Exit-Code `1` nur
 bei `fehler`, `0` bei Warnungen und deklarierten Lücken, `2` bei Setup-Fehlern. Die Selbsttest-Fälle
 liegen als Fixtures in [`scripts/test-fixtures/replay/`](../scripts/test-fixtures/replay/) und laufen
 über `--selftest` gegen die reine Subsumtionsfunktion — ohne Netz, Melder und Gegenrichtung
 (saubere Sequenz schweigt, Bot-Merge, Cleanup-Reste, fehlende Label-Sequenz, Merge ohne
-Review-Label, fehlender CI-Beleg, doppelte `Closes`-Form, lokaler Zustand unlesbar).
+Review-Label, fehlender CI-Beleg, doppelte `Closes`-Form, lokaler Zustand unlesbar, D3-Verstoß
+ohne Issue-Timeline bleibt bei der ehrlichen Lücke, Sekunden-Gleichstand mit `unlabeled` bleibt
+in der Timeline-Reihenfolge).
 
 ## Was geprüft wird
 

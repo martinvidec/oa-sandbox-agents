@@ -10,7 +10,10 @@
 //   gh api repos/<owner>/<repo>/issues/<n>/timeline — PR-Timeline: Kommentare, `ready_for_review`,
 //                                                  `merged` (Merge-Actor!) inkl. Zeitstempeln
 //   gh api repos/<owner>/<repo>/issues/<issue>/timeline — Label-Zustandsübergänge des gebundenen
-//                                                  Issues (Labels hängen am Issue, nicht am PR)
+//                                                  Issues (Labels hängen am Issue, nicht am PR);
+//                                                  das Issue wird unabhängig von der Closes-Zählung
+//                                                  ermittelt (einziges `Closes #N`, sonst
+//                                                  eindeutiges `cross-referenced`-Event)
 //   git worktree list / git branch --list (lokal) — Ist-Zustand für `cleanup_after_merge`
 //
 // Subsumtion: Nur Regeln mit `runtime_checkable: true` (rules.yaml) werden geprüft; alle
@@ -123,27 +126,34 @@ const LABEL_ZU_ZUSTAND = {
 // Rein: Label-Ereignisse aus beliebig vielen Timelines einsammeln, nach Zeitstempel sortiert.
 export function extrahiereLabelEreignisse(timelines) {
   const ereignisse = [];
-  for (const liste of timelines) {
-    for (const e of liste ?? []) {
-      if (e.event !== 'labeled' && e.event !== 'unlabeled') continue;
+  timelines.forEach((liste, tlIdx) => {
+    (liste ?? []).forEach((e, pos) => {
+      if (e.event !== 'labeled' && e.event !== 'unlabeled') return;
       const name = e.label?.name;
-      if (!name || !(name in LABEL_ZU_ZUSTAND)) continue;
-      ereignisse.push({ ereignis: e.event, label: name, zustand: LABEL_ZU_ZUSTAND[name], at: e.created_at, actor: e.actor?.login ?? null });
-    }
-  }
-  ereignisse.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+      if (!name || !(name in LABEL_ZU_ZUSTAND)) return;
+      ereignisse.push({ ereignis: e.event, label: name, zustand: LABEL_ZU_ZUSTAND[name], at: e.created_at, actor: e.actor?.login ?? null, tlIdx, pos });
+    });
+  });
+  // Stabiler Sort: Zeitstempel, dann Quell-Timeline, dann Position in der Timeline — bei
+  // Sekunden-Gleichständen gilt die Reihenfolge der Timeline, nicht Alphabet oder Zufall
+  // (Review-Befund m1 zu PR #61).
+  ereignisse.sort((a, b) =>
+    String(a.at).localeCompare(String(b.at)) || a.tlIdx - b.tlIdx || a.pos - b.pos);
   return ereignisse;
 }
 
-// Rein: die tatsächlich gelaufene Zustandssequenz — Label-Ereignisse (nur letztes je Zustand)
-// plus der Merge als Übergang in den Endzustand.
+// Rein: die tatsächlich gelaufene Zustandssequenz — Label-Ereignisse (erste Setzung je
+// Zustand zählt; `unlabeled` ist Teil des normalen Label-Wechsels und hebt die besuchte
+// Station nicht fort) plus der Merge als Übergang in den Endzustand. Die Reihenfolge bei
+// Sekunden-Gleichständen liefert der stabile Sort in `extrahiereLabelEreignisse`
+// (Timeline-Index statt Alphabet) — genau dort lag der Berichtsmangel aus Review-Befund m1.
 export function baueSequenz(labelEreignisse, mergedAt, endZustand) {
   const seq = [];
-  const gesehen = new Map();
+  const gesehen = new Set();
   for (const e of labelEreignisse) {
-    if (e.ereignis === 'unlabeled') continue; // Rücknahmen bleiben in den Rohdaten sichtbar
+    if (e.ereignis === 'unlabeled') continue; // Rücknahme bleibt in den Rohdaten sichtbar
     if (gesehen.has(e.zustand)) continue;     // erste Setzung des Zustands zählt
-    gesehen.set(e.zustand, e.at);
+    gesehen.add(e.zustand);
     seq.push({ zustand: e.zustand, label: e.label, at: e.at, actor: e.actor, via: 'labeled' });
   }
   if (mergedAt) {
@@ -153,21 +163,54 @@ export function baueSequenz(labelEreignisse, mergedAt, endZustand) {
   return seq;
 }
 
+// Rein: beobachtete Übergänge (Zustandswechsel) aus den Label-Ereignissen — inklusive
+// Wiederholungen (Review-Schleife: review → in_progress → review). Grundlage der
+// vollständigen Subsumtion gegen den Übergangs-Graph aus states.yaml (Review-Befund M1).
+export function baueVerlauf(labelEreignisse, mergedAt, endZustand) {
+  const uebergaenge = [];
+  let current = null;
+  for (const e of labelEreignisse) {
+    if (e.ereignis === 'labeled') {
+      if (e.zustand !== current) uebergaenge.push({ von: current, nach: e.zustand, at: e.at });
+      current = e.zustand;
+    } else if (e.zustand === current) {
+      current = null; // Zustand verlassen; ein späterer Übergang startet dann bei `initial`
+    }
+  }
+  if (mergedAt) {
+    uebergaenge.push({ von: current, nach: endZustand, at: mergedAt, via: 'merged' });
+    current = endZustand;
+  }
+  return { uebergaenge, endzustand: current };
+}
+
 // ---------------------------------------------------------------- Subsumtion
-const CI_BELEG_MUSTER = /CI gr|conclusion\s*[:=]?\s*success|Run\s+\d+/i;
+// CI-Beleg (Review-Befund m2 zu PR #61): Eine Run-ID allein ist kein Beleg — „Run 123 ist
+// fehlgeschlagen" zählt nicht. Gefordert ist Erfolgskontext: entweder die D4-Konvention
+// „CI grün: Run <id>, conclusion success" („CI gr" prüft das), oder Run-ID UND ein
+// Erfolgsausdruck in direktem Zusammenhang.
+const CI_ERFOLG_KONTEXT = /conclusion\s*[:=]?\s*["']?success["']?|\bgrün\b|\berfolgreich\b|\bsuccess\b/i;
+function istCiBeleg(body) {
+  if (/CI\s+gr/i.test(body)) return true; // Konventionsform „CI grün: Run …“ trägt den Erfolg im Satz
+  return /Run\s+\d+/i.test(body) && CI_ERFOLG_KONTEXT.test(body);
+}
 
 // Rein: Subsumtion aller runtime_checkable-Regeln gegen die beobachteten Daten.
-// `pr` = PR-Metadaten; `prTimeline`/`issueTimeline` = Timeline-Arrays; `local` =
-// { verfuegbar, worktrees:[], branches:[] }; `regeln` = rules.rules aus rules.yaml;
-// `endZustand` = done_state aus states.yaml.
-export function subsumiere({ pr, prTimeline, issueTimeline, local, regeln, endZustand, erwarteteKette }) {
+// `pr` = PR-Metadaten; `prTimeline` = PR-Timeline-Array; `issueTimeline` = Timeline des
+// gebundenen Issues oder `null`, wenn sie nicht geladen werden konnte (Review-Befund M2 —
+// dann erscheinen die Label-Prüfungen als `nicht-pruefbar`, nicht als kaskadierende Fehler);
+// `local` = { verfuegbar, worktrees:[], branches:[] }; `regeln` = rules.rules aus rules.yaml;
+// `endZustand` = done_state, `uebergaenge`/`initial`/`maxReviewLoops` aus states.yaml;
+// `erwarteteKette` = Pflichtstationen für die Fehlertexte.
+export function subsumiere({ pr, prTimeline, issueTimeline, local, regeln, endZustand, erwarteteKette, uebergaenge = [], initial = null, maxReviewLoops = 2 }) {
   const befunde = [];
   const bestanden = [];
   const add = (severity, rule, code, message) => befunde.push({ id: `RP-${befunde.length + 1}`, severity, rule, code, message });
   const ok = (rule, code, message) => bestanden.push({ rule, code, message });
 
   const regel = id => regeln.find(r => r.id === id);
-  const timelines = [prTimeline ?? [], issueTimeline ?? []];
+  const issueTimelineVerfuegbar = issueTimeline != null;
+  const timelines = issueTimelineVerfuegbar ? [prTimeline ?? [], issueTimeline] : [prTimeline ?? []];
   const kommentare = timelines.flatMap(tl => tl.filter(e => e.event === 'commented' && e.body));
   const labelEreignisse = extrahiereLabelEreignisse(timelines);
   const reviewLabel = labelEreignisse.find(e => e.ereignis === 'labeled' && e.label === 'agent:review');
@@ -204,14 +247,16 @@ export function subsumiere({ pr, prTimeline, issueTimeline, local, regeln, endZu
   if (reviewLabel) {
     const beleg = kommentare
       .filter(c => !reviewLabel.at || String(c.created_at) <= String(reviewLabel.at))
-      .some(c => CI_BELEG_MUSTER.test(c.body));
+      .some(c => istCiBeleg(c.body));
     if (beleg) {
-      ok('D4_review_label_needs_evidence', 'ci-beleg-vor-review', 'Vor dem `agent:review`-Label liegt ein Kommentar mit CI-Beleg (Run-ID/conclusion).');
+      ok('D4_review_label_needs_evidence', 'ci-beleg-vor-review', 'Vor dem `agent:review`-Label liegt ein Kommentar mit CI-Beleg (Run-ID mit Erfolgskontext/conclusion success).');
     } else {
-      add('fehler', 'D4_review_label_needs_evidence', 'ci-beleg-fehlt', 'Beim Setzen von `agent:review` lag kein Kommentar mit CI-Beleg (Run-ID, `conclusion success`) vor — D4 verlangt den Beleg am PR.');
+      add('fehler', 'D4_review_label_needs_evidence', 'ci-beleg-fehlt', 'Beim Setzen von `agent:review` lag kein Kommentar mit CI-Beleg vor — gefordert ist die D4-Konventionsform (`CI grün: Run <id>, conclusion success`); eine Run-ID ohne Erfolgskontext zählt nicht.');
     }
     // Zweite assert-Komponente: Draft-Status zum Label-Zeitpunkt ist historisch nicht rekonstruierbar.
     add('nicht-pruefbar', 'D4_review_label_needs_evidence', 'draft-status-historisch', 'Der Draft-Status des PRs zum Zeitpunkt des `agent:review`-Labels ist aus der Timeline nicht rekonstruierbar (`ready_for_review` belegt die Rückkehr, nicht den Zustand bei jedem Label-Ereignis).');
+  } else if (!issueTimelineVerfuegbar) {
+    add('nicht-pruefbar', 'D4_review_label_needs_evidence', 'issue-timeline-fehlt', 'Kein `agent:review`-Label-Ereignis belegbar und keine Issue-Timeline geladen (das gebundene Issue ließ sich nicht eindeutig ermitteln) — die Belegpflicht ist dem Zeitpunkt nicht zuordenbar.');
   } else {
     add('nicht-pruefbar', 'D4_review_label_needs_evidence', 'kein-review-label', 'Kein `agent:review`-Label-Ereignis in der Timeline — die Belegpflicht ließ sich dem Zeitpunkt nicht zuordnen.');
   }
@@ -237,19 +282,65 @@ export function subsumiere({ pr, prTimeline, issueTimeline, local, regeln, endZu
     add('nicht-pruefbar', 'cleanup_after_merge', 'cleanup-vor-merge', 'Ohne Merge kein Cleanup-Anlass — die Regel hängt am Trigger `pr_merged`.');
   }
 
-  // --- Zustandssequenz gegen die erwartete Kette aus states.yaml
+  // --- Zustandssequenz: vollständig gegen den Übergangs-Graph aus states.yaml subsumieren
+  // (Review-Befund M1 zu PR #61) — jeder beobachtete Zustandswechsel muss im Graph existieren
+  // oder einen Weg über dazwischenliegende Stationen haben; übersprungene Stationen und der
+  // Endzustand werden mitgeprüft, Review-Schleifen gegen `max_review_loops` gezählt.
   if (merged) {
-    if (!readyLabel) add('warnung', 'zustandssequenz', 'ready-fehlt', 'Kein `agent:ready`-Label-Ereignis — der Start der Sequenz ist nicht belegt (historische PRs können vor der Label-Ära liegen).');
-    if (reviewLabel && inProgressLabel && String(inProgressLabel.at) > String(reviewLabel.at)) {
-      add('fehler', 'zustandssequenz', 'label-sequenz', `\`agent:in-progress\` (${inProgressLabel.at}) liegt nach \`agent:review\` (${reviewLabel.at}) — die erwartete Kette ist ${erwarteteKette.join(' → ')}.`);
-    } else if (reviewLabel && !inProgressLabel) {
-      add('fehler', 'zustandssequenz', 'label-sequenz', '`agent:review` ohne vorangegangenes `agent:in-progress` — der Delegierungs-Übergang (`delegate`) ist in der Timeline nicht belegt.');
-    }
     const mergedAt = mergedEvent?.created_at ?? pr.mergedAt ?? null;
-    if (reviewLabel && mergedAt && String(mergedAt) < String(reviewLabel.at)) {
-      add('fehler', 'zustandssequenz', 'merge-ohne-review', `Merge (${mergedAt}) liegt vor dem \`agent:review\`-Label (${reviewLabel.at}) — der Merge-Übergang verlangt den review-Zustand.`);
-    } else if (!reviewLabel && merged) {
-      add('fehler', 'zustandssequenz', 'merge-ohne-review', 'Merge ohne vorangegangenes `agent:review`-Label — der review-Zustand ist in der Timeline nicht belegt.');
+    if (labelEreignisse.length === 0) {
+      if (!issueTimelineVerfuegbar) {
+        add('nicht-pruefbar', 'zustandssequenz', 'issue-timeline-fehlt', 'Keine Issue-Timeline geladen (das gebundene Issue ließ sich nicht eindeutig ermitteln — siehe D3-Befund am PR-Body) — die Label-Sequenz ist gegen den Übergangs-Graph nicht prüfbar; keine kaskadierenden Sequenz-Fehler statt ehrlicher Lücke.');
+      } else {
+        add('nicht-pruefbar', 'zustandssequenz', 'label-daten-fehlen', 'Keine Label-Ereignisse in den Timelines — die Zustandssequenz ist nicht belegt (historische PRs können vor der Label-Ära liegen).');
+      }
+    } else {
+      if (!readyLabel) add('warnung', 'zustandssequenz', 'ready-fehlt', 'Kein `agent:ready`-Label-Ereignis — der Start der Sequenz ist nicht belegt (historische PRs können vor der Label-Ära liegen).');
+      const adj = new Map();
+      for (const t of uebergaenge) {
+        if (!adj.has(t.from)) adj.set(t.from, []);
+        adj.get(t.from).push({ nach: t.to, id: t.id });
+      }
+      const pfad = (von, nach) => { // kürzester gerichteter Weg, für Skip-Meldungen
+        if (von == null || von === nach) return null;
+        const schlange = [[von, [von]]];
+        const gesehen = new Set([von]);
+        while (schlange.length) {
+          const [knoten, weg] = schlange.shift();
+          for (const k of adj.get(knoten) ?? []) {
+            if (k.nach === nach) return [...weg, k.nach];
+            if (!gesehen.has(k.nach)) { gesehen.add(k.nach); schlange.push([k.nach, [...weg, k.nach]]); }
+          }
+        }
+        return null;
+      };
+      const verlauf = baueVerlauf(labelEreignisse, mergedAt, endZustand);
+      for (const u of verlauf.uebergaenge) {
+        if (u.nach === endZustand) {
+          // Der Merge-Übergang verlangt den review-Zustand — nur der führt in den Endzustand.
+          if (!(adj.get(u.von) ?? []).some(k => k.nach === endZustand)) {
+            add('fehler', 'zustandssequenz', 'merge-ohne-review', `Übergang in den Endzustand \`${endZustand}\` von \`${u.von ?? '—'}\` aus beobachtet — der Merge verlangt den review-Zustand (erwartete Kette: ${erwarteteKette.join(' → ')}).`);
+          }
+          continue;
+        }
+        const start = u.von ?? initial;
+        if (start != null && start === u.nach) continue; // Wiedereintritt in denselben Zustand — kein Übergang
+        if ((adj.get(start) ?? []).some(k => k.nach === u.nach)) continue; // direkter Übergang existiert
+        const weg = start != null ? pfad(start, u.nach) : null;
+        if (weg && weg.length > 2) {
+          const zwischen = weg.slice(1, -1);
+          add('fehler', 'zustandssequenz', 'label-sequenz', `Übergang \`${start}\` → \`${u.nach}\` nur über übersprungene Stationen (${zwischen.join(', ')} fehlen in der Timeline) — der Weg im Übergangs-Graph wäre ${weg.join(' → ')} (erwartete Kette: ${erwarteteKette.join(' → ')}).`);
+        } else if (!weg) {
+          add('fehler', 'zustandssequenz', 'label-sequenz', `Übergang \`${start ?? '—'}\` → \`${u.nach}\` existiert im Übergangs-Graph von states.yaml nicht (erwartete Kette: ${erwarteteKette.join(' → ')}).`);
+        }
+        // weg mit length <= 2 kann hier nicht eintreten (direkter Übergang wurde oben geprüft).
+      }
+      // Review-Schleifen zählen: jede erneute `agent:review`-Setzung ist eine Schleife.
+      const reviewSetzungen = labelEreignisse.filter(e => e.ereignis === 'labeled' && e.label === 'agent:review').length;
+      const schleifen = Math.max(0, reviewSetzungen - 1);
+      if (schleifen > maxReviewLoops) {
+        add('fehler', 'zustandssequenz', 'review-schleifen-ueberschritten', `${schleifen} Review-Schleifen beobachtet — die Invariante \`max_review_loops\` (${maxReviewLoops}) verlangt danach \`needs-human\` (Übergang \`escalate_review\`), nicht weitere Schleifendurchläufe.`);
+      }
     }
   }
 
@@ -302,6 +393,30 @@ function ghJson(argv, root) {
   const out = execFileSync('gh', argv, { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   return JSON.parse(out);
 }
+// Mehrere hintereinander gesetzte JSON-Arrays zeichenweise an den Tiefen-Nullstellen trennen —
+// String-Kontext (inkl. Escapes) wird mitverfolgt, sodass ein `][` im Body eines Kommentars
+// die Trennung nicht mehr zerstört (Review-Befund m3 zu PR #61: die alte Split-Heuristik
+// `raw.split('][')` hat solche Teile still verworfen).
+function splitJsonArrays(raw) {
+  const teile = [];
+  let tief = 0, inString = false, escape = false, start = -1;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (inString) {
+      if (escape) escape = false;
+      else if (c === '\\') escape = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') { inString = true; continue; }
+    if (c === '[') { if (tief === 0) start = i; tief++; }
+    else if (c === ']') { tief--; if (tief === 0 && start >= 0) { teile.push(raw.slice(start, i + 1)); start = -1; } }
+  }
+  if (tief !== 0 || inString || teile.length === 0) {
+    throw new Error('Timeline-Rohdaten sind nicht als Folge von JSON-Arrays parsebar');
+  }
+  return teile;
+}
 function ghTimeline(nr, repo, root) {
   // Timeline als JSON: `gh api` mit Pagination per --paginate; einzeln geparst wird die
   // Gesamtliste — `gh api --paginate` gibt ein JSON-Array pro Seite zurück, gh faltet das
@@ -311,11 +426,16 @@ function ghTimeline(nr, repo, root) {
     const ganzes = JSON.parse(raw);
     return Array.isArray(ganzes) ? ganzes.flat() : [];
   } catch {
-    // Mehrere JSON-Arrays hintereinander (ältere gh-Versionen) — per NDJSON-Heuristik flachen.
-    const teile = raw.split('][').map((t, i) => (i === 0 ? t : '[' + t));
+    // Mehrere JSON-Arrays hintereinander (ältere gh-Versionen) — robust splitten. Ein nicht
+    // parsebarer Teil ist ein Datenmangel: Der Lauf bricht ehrlich ab (exit 2 über den
+    // Aufrufer), statt Teildaten still weiterzuverwenden.
     const flach = [];
-    for (let t of teile) {
-      try { flach.push(...JSON.parse(t.endsWith(']') ? t : t + ']')); } catch {}
+    for (const t of splitJsonArrays(raw)) {
+      let arr;
+      try { arr = JSON.parse(t); } catch (e) {
+        throw new Error(`Timeline ${nr}: Teil der NDJSON-Folge nicht parsebar (${e.message}) — Datenmangel, kein stiller Verwerfen`);
+      }
+      if (Array.isArray(arr)) flach.push(...arr);
     }
     return flach;
   }
@@ -391,12 +511,29 @@ try {
   console.error(`gh pr view ${prNr} fehlgeschlagen: ${e.message}`);
   process.exit(2);
 }
-const closesNr = ((pr.body ?? '').match(/(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/i) ?? [])[1];
 let prTimeline = [];
-let issueTimeline = [];
+let issueTimeline = null;
 try {
   prTimeline = ghTimeline(prNr, repo, root);
-  if (closesNr) issueTimeline = ghTimeline(closesNr, repo, root);
+  // Issue-Timeline unabhängig von der Closes-Zählung laden (Review-Befund M2 zu PR #61):
+  // Bei einem D3-Verstoß (0 oder ≥2 Closes-Formen) darf die Label-Sequenz nicht als
+  // kaskadierender Fehler erscheinen, nur weil die Timeline fehlt. Das gebundene Issue
+  // wird über das einzelne `Closes #N` ermittelt, sonst über ein eindeutiges
+  // `cross-referenced`-Event der PR-Timeline; bleibt beides aus, bleibt die Timeline weg
+  // und die Subsumtion meldet `nicht-pruefbar` statt Annahmen.
+  const closesFormen = [...(pr.body ?? '').matchAll(/(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi)].map(m => m[1]);
+  let issueNr = null;
+  if (closesFormen.length === 1) {
+    issueNr = closesFormen[0];
+  } else {
+    const xrefs = new Set();
+    for (const e of prTimeline) {
+      const nr = e.event === 'cross-referenced' ? e.source?.issue?.number : null;
+      if (nr && String(nr) !== String(prNr)) xrefs.add(String(nr));
+    }
+    if (xrefs.size === 1) issueNr = [...xrefs][0];
+  }
+  if (issueNr) issueTimeline = ghTimeline(issueNr, repo, root);
 } catch (e) {
   console.error(`gh api timeline fehlgeschlagen: ${e.message}`);
   process.exit(2);
@@ -405,7 +542,15 @@ const local = lokalerZustand(root);
 
 const labelEreignisse = extrahiereLabelEreignisse([prTimeline, issueTimeline]);
 const seq = baueSequenz(labelEreignisse, pr.mergedAt, endZustand);
-const sub = subsumiere({ pr, prTimeline, issueTimeline, local, regeln: dsl.rules.rules ?? [], endZustand, erwarteteKette: kette });
+const sub = subsumiere({
+  pr, prTimeline, issueTimeline, local,
+  regeln: dsl.rules.rules ?? [],
+  endZustand,
+  erwarteteKette: kette,
+  uebergaenge: dsl.states.transitions ?? [],
+  initial: dsl.states.initial ?? null,
+  maxReviewLoops: dsl.states.invariants?.max_review_loops ?? 2,
+});
 const report = bericht(pr, seq, sub, dsl);
 
 if (jsonOut) {
