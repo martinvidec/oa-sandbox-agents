@@ -119,6 +119,22 @@
     }
     .rule b { color: #e2e8f0; display: block; margin-bottom: 0.3rem; font-size: 0.8rem; }
     .footer { text-align: center; margin-top: 2rem; color: #475569; font-size: 0.75rem; }
+
+    /* Kompakter Sticky-Header unterhalb des Viewport-Breakpoints: Der volle Header
+       (Titel + Subtitle + Badge + Legende + Tabs) frisst auf niedrigen Viewports zu viel
+       Fläche — Subtitle fällt weg, Abstände und Schrift schrumpfen. */
+    @media (max-height: 800px), (max-width: 760px) {
+      body { padding: 1rem; }
+      .header { padding: 0.4rem 0 0.5rem 0; margin-bottom: 1rem; }
+      h1 { font-size: 1.1rem; }
+      .subtitle { display: none; }
+      .badge { margin-left: 0; margin-top: 0.2rem; padding: 0.15rem 0.6rem; font-size: 0.7rem; }
+      .legend-inline { margin: 0.4rem 0 0 0; gap: 0.35rem 0.9rem; }
+      .tab-bar { margin: 0.6rem 0 0.6rem 0; gap: 0.35rem; }
+      .tab-btn { padding: 0.3rem 0.8rem; font-size: 0.75rem; }
+      .diagram-note { margin-left: 0; }
+      details.collapsible { margin-left: 0; }
+    }
   </style>
 </head>
 <body>
@@ -157,42 +173,45 @@
         3. Fertig. Das Panel wird LAZY gerendert: beim ersten Aktivieren des Tabs
            (renderPanel im Script unten — Mermaid misst Labels über das Layout und
            braucht dazu ein sichtbares Element). data-tab von Button und Panel
-           muss übereinstimmen.
+           muss übereinstimmen. Label-Quotes: Innerhalb von ["…"] niemals rohe " —
+           HTML-Attribute mit einfachen Quotes schreiben (<span class='sub'>);
+           &quot;-Escaping ist unter mermaid@11 kein Ausweg (Entity wird vor dem
+           Parser zum String-Terminator).
         ============================================================
       -->
       <nav class="tab-bar" role="tablist" aria-label="Workflow-Diagramme">
-        <button class="tab-btn active" data-tab="ueberblick" role="tab" aria-selected="true">Überblick</button>
-        <button class="tab-btn" data-tab="claude-pipeline" role="tab" aria-selected="false">claude-pipeline</button>
-        <button class="tab-btn" data-tab="hermes-pipeline" role="tab" aria-selected="false">hermes-pipeline</button>
-        <button class="tab-btn" data-tab="dsl-validierung" role="tab" aria-selected="false">DSL-Validierung</button>
-        <button class="tab-btn" data-tab="bpmn" role="tab" aria-selected="false">BPMN</button>
+        <button class="tab-btn active" id="tab-btn-ueberblick" data-tab="ueberblick" role="tab" aria-selected="true" aria-controls="tab-panel-ueberblick">Überblick</button>
+        <button class="tab-btn" id="tab-btn-claude-pipeline" data-tab="claude-pipeline" role="tab" aria-selected="false" aria-controls="tab-panel-claude-pipeline" tabindex="-1">claude-pipeline</button>
+        <button class="tab-btn" id="tab-btn-hermes-pipeline" data-tab="hermes-pipeline" role="tab" aria-selected="false" aria-controls="tab-panel-hermes-pipeline" tabindex="-1">hermes-pipeline</button>
+        <button class="tab-btn" id="tab-btn-dsl-validierung" data-tab="dsl-validierung" role="tab" aria-selected="false" aria-controls="tab-panel-dsl-validierung" tabindex="-1">DSL-Validierung</button>
+        <button class="tab-btn" id="tab-btn-bpmn" data-tab="bpmn" role="tab" aria-selected="false" aria-controls="tab-panel-bpmn" tabindex="-1">BPMN</button>
       </nav>
     </div>
 
     <!-- ============ TAB 1: ÜBERBLICK (ORGANIGRAMM) ============ -->
-    <section class="tab-panel active" data-tab="ueberblick">
+    <section class="tab-panel active" id="tab-panel-ueberblick" data-tab="ueberblick" role="tabpanel" aria-labelledby="tab-btn-ueberblick" tabindex="0">
       <h2>Akteure &amp; Organigramm</h2>
       <div class="diagram-container">
       <pre class="mermaid">
 %%{init: {"flowchart":{"curve":"basis","nodeSpacing":60,"rankSpacing":70}}}%%
 flowchart TB
     subgraph OG1["👤 Mensch"]
-    MARTIN["👤 <b>Martin</b><br/>Owner · einziger Merge-Zugriff<br/><span class="sub">Telegram-DM / repo-Thread</span>"]:::martin
+    MARTIN["👤 <b>Martin</b><br/>Owner · einziger Merge-Zugriff<br/><span class='sub'>Telegram-DM / repo-Thread</span>"]:::martin
     end
 
     subgraph OG2["🧠 Orchestrierung"]
-    LEAD["🧠 <b>Hermes Lead (Orchestrator)</b><br/><span class="sub">Telegram-Bot · default-Profil<br/>Nimmt Aufträge · legt Issues an<br/>delegiert · Draft→Ready · Cleanup</span>"]:::lead
+    LEAD["🧠 <b>Hermes Lead (Orchestrator)</b><br/><span class='sub'>Telegram-Bot · default-Profil<br/>Nimmt Aufträge · legt Issues an<br/>delegiert · Draft→Ready · Cleanup</span>"]:::lead
     end
 
     subgraph OG3["⚒️ Ausführung"]
-    RESEARCH["🔬 <b>Researcher</b><br/><span class="sub">Hermes @research / @deep-research<br/>Recherche · Specs → docs/specs/</span>"]:::research
-    CODER["⚒️ <b>Coder — Claude Code</b><br/><span class="sub">headless · 1 Worktree pro Issue<br/>Implementiert · Draft-PR<br/>Budget: --max-turns</span>"]:::coder
-    REVIEW["🔍 <b>Reviewer — Claude Code</b><br/><span class="sub">2. Run · sauberer Kontext<br/>Befunde als PR-Kommentare<br/>kein Write/Edit · max 2 Schleifen</span>"]:::review
+    RESEARCH["🔬 <b>Researcher</b><br/><span class='sub'>Hermes @research / @deep-research<br/>Recherche · Specs → docs/specs/</span>"]:::research
+    CODER["⚒️ <b>Coder — Claude Code</b><br/><span class='sub'>headless · 1 Worktree pro Issue<br/>Implementiert · Draft-PR<br/>Budget: --max-turns</span>"]:::coder
+    REVIEW["🔍 <b>Reviewer — Claude Code</b><br/><span class='sub'>2. Run · sauberer Kontext<br/>Befunde als PR-Kommentare<br/>kein Write/Edit · max 2 Schleifen</span>"]:::review
     end
 
     subgraph OG4["🐙 Infrastruktur"]
-    CI["⚙️ <b>GitHub CI</b><br/><span class="sub">YAML-Validierung<br/>Konventions-Checks<br/>grün = Merge-Voraussetzung</span>"]:::ci
-    GH["🐙 <b>GitHub</b><br/><span class="sub">Issues = Auftragsqueue (Templates)<br/>Labels: ready → in-progress → review<br/>Branches: docs/&lt;nr&gt;-&lt;slug&gt;<br/>AGENTS.md = Repo-Contract</span>"]:::github
+    CI["⚙️ <b>GitHub CI</b><br/><span class='sub'>YAML-Validierung<br/>Konventions-Checks<br/>grün = Merge-Voraussetzung</span>"]:::ci
+    GH["🐙 <b>GitHub</b><br/><span class='sub'>Issues = Auftragsqueue (Templates)<br/>Labels: ready → in-progress → review<br/>Branches: docs/&lt;nr&gt;-&lt;slug&gt;<br/>AGENTS.md = Repo-Contract</span>"]:::github
     end
 
     MARTIN -->|"Auftrag"| LEAD
@@ -295,7 +314,7 @@ flowchart TB
     </section>
 
     <!-- ============ TAB 2: CLAUDE-PIPELINE ============ -->
-    <section class="tab-panel" data-tab="claude-pipeline">
+    <section class="tab-panel" id="tab-panel-claude-pipeline" data-tab="claude-pipeline" role="tabpanel" aria-labelledby="tab-btn-claude-pipeline" tabindex="0">
       <h2>Pipeline (Swim-Lanes)</h2>
       <div class="diagram-container">
       <pre class="mermaid">
@@ -393,7 +412,7 @@ flowchart TD
     </section>
 
     <!-- ============ TAB 3: DSL-VALIDIERUNG ============ -->
-    <section class="tab-panel" data-tab="dsl-validierung">
+    <section class="tab-panel" id="tab-panel-dsl-validierung" data-tab="dsl-validierung" role="tabpanel" aria-labelledby="tab-btn-dsl-validierung" tabindex="0">
       <h2>Wie wird der Workflow mit der DSL validiert?</h2>
       <p class="diagram-note">Farben dieses Diagramms: cyan = CI/Regel 1, violet = DSL-Dateien, amber = Validierung, rot = Befunde, grün = OK — abweichend von der seitenweiten Legende.</p>
       <div class="diagram-container">
@@ -402,38 +421,38 @@ flowchart TD
 flowchart TB
     subgraph DSL1["📜 DSL — workflow/&lt;id&gt;/"]
         direction LR
-        REG["<b>registry.yaml</b><br/><span class="sub">Instanzen · genau ein active: true</span>"]:::dslfile
-        ROLES["<b>workflow/&lt;id&gt;/roles.yaml</b><br/><span class="sub">Rollen · Tool-Sets · Budgets</span>"]:::dslfile
-        STATES["<b>workflow/&lt;id&gt;/states.yaml</b><br/><span class="sub">Labels · Übergänge</span>"]:::dslfile
-        RULES["<b>workflow/&lt;id&gt;/rules.yaml</b><br/><span class="sub">Regeln D1–D8 · Fakten</span>"]:::dslfile
-        PIPE["<b>workflow/&lt;id&gt;/pipeline.yaml</b><br/><span class="sub">Schritte der Pipeline</span>"]:::dslfile
+        REG["<b>registry.yaml</b><br/><span class='sub'>Instanzen · genau ein active: true</span>"]:::dslfile
+        ROLES["<b>workflow/&lt;id&gt;/roles.yaml</b><br/><span class='sub'>Rollen · Tool-Sets · Budgets</span>"]:::dslfile
+        STATES["<b>workflow/&lt;id&gt;/states.yaml</b><br/><span class='sub'>Labels · Übergänge</span>"]:::dslfile
+        RULES["<b>workflow/&lt;id&gt;/rules.yaml</b><br/><span class='sub'>Regeln D1–D8 · Fakten</span>"]:::dslfile
+        PIPE["<b>workflow/&lt;id&gt;/pipeline.yaml</b><br/><span class='sub'>Schritte der Pipeline</span>"]:::dslfile
     end
 
     subgraph DSL2["⚙️ scripts/validate-workflow.mjs"]
         direction TB
-        E1["<b>Ebene 1 — Schema</b> (ajv)<br/><span class="sub">registry.yaml + 4 Instanz-Dateien<br/>· Referenzauflösung</span>"]:::script
-        E2["<b>Ebene 2 — Konsistenz-Linter</b><br/><span class="sub">2a Wildcard-Sicherheit · 2b Zustandsmaschine<br/>2c D2-Prosa ↔ roles.yaml · 2d Regeln · 2e Pipeline</span>"]:::script
-        ST["<b>Selbsttest</b><br/><span class="sub">&gt;150 Fälle, beim Ausbau wachsend · läuft bei jedem Lauf mit<br/>Melder + Gegenrichtung</span>"]:::script
+        E1["<b>Ebene 1 — Schema</b> (ajv)<br/><span class='sub'>registry.yaml + 4 Instanz-Dateien<br/>· Referenzauflösung</span>"]:::script
+        E2["<b>Ebene 2 — Konsistenz-Linter</b><br/><span class='sub'>2a Wildcard-Sicherheit · 2b Zustandsmaschine<br/>2c D2-Prosa ↔ roles.yaml · 2d Regeln · 2e Pipeline</span>"]:::script
+        ST["<b>Selbsttest</b><br/><span class='sub'>&gt;150 Fälle, beim Ausbau wachsend · läuft bei jedem Lauf mit<br/>Melder + Gegenrichtung</span>"]:::script
     end
 
     subgraph DSL3["📄 Generierung — render-workflow.mjs"]
         direction LR
-        GEN["<b>render-workflow.mjs --check</b><br/><span class="sub">generiert == eingecheckt</span>"]:::script
-        WF["<b>WORKFLOW.md</b><br/><span class="sub">Rollen-, Label-, Übergangs-,<br/>Regel- und Pipeline-Tabelle</span>"]:::agents
-        AG["<b>AGENTS.md</b><br/><span class="sub">aktiv-Block zwischen<br/>dsl:active-workflow-Markern</span>"]:::agents
+        GEN["<b>render-workflow.mjs --check</b><br/><span class='sub'>generiert == eingecheckt</span>"]:::script
+        WF["<b>WORKFLOW.md</b><br/><span class='sub'>Rollen-, Label-, Übergangs-,<br/>Regel- und Pipeline-Tabelle</span>"]:::agents
+        AG["<b>AGENTS.md</b><br/><span class='sub'>aktiv-Block zwischen<br/>dsl:active-workflow-Markern</span>"]:::agents
     end
 
     subgraph DSL4["🏁 Ergebnis"]
         direction LR
-        OK(["<b>exit 0 — OK</b><br/><span class="sub">Warnungen erlaubt<br/>CI-Beleg = DSL-Beleg</span>"]):::ok
-        FAIL["<b>exit 1 — Befunde</b><br/><span class="sub">verbotener-eintrag · wildcard-mittig<br/>fakt-quelle-abweichend<br/>ueberschrift-fehlt · ueberschrift-satzpunkt</span>"]:::befund
-        FIX["<b>Befunde beheben · neu pushen</b><br/><span class="sub">kein agent:review, solange rot</span>"]:::befund
+        OK(["<b>exit 0 — OK</b><br/><span class='sub'>Warnungen erlaubt<br/>CI-Beleg = DSL-Beleg</span>"]):::ok
+        FAIL["<b>exit 1 — Befunde</b><br/><span class='sub'>verbotener-eintrag · wildcard-mittig<br/>fakt-quelle-abweichend<br/>ueberschrift-fehlt · ueberschrift-satzpunkt</span>"]:::befund
+        FIX["<b>Befunde beheben · neu pushen</b><br/><span class='sub'>kein agent:review, solange rot</span>"]:::befund
     end
 
     subgraph DSL5["🐙 CI + Regel 1"]
         direction LR
-        CIJ["<b>CI-Job workflow-dsl</b><br/><span class="sub">pull_request + push auf main<br/>2 Prüfschritte · NODE_PATH<br/>Validator + render-workflow --check</span>"]:::ci
-        SELF["<b>DSL_self_validation</b><br/><span class="sub">Regel 1 in rules.yaml<br/>jede Workflow-Änderung<br/>braucht einen grünen Lauf</span>"]:::regel
+        CIJ["<b>CI-Job workflow-dsl</b><br/><span class='sub'>pull_request + push auf main<br/>2 Prüfschritte · NODE_PATH<br/>Validator + render-workflow --check</span>"]:::ci
+        SELF["<b>DSL_self_validation</b><br/><span class='sub'>Regel 1 in rules.yaml<br/>jede Workflow-Änderung<br/>braucht einen grünen Lauf</span>"]:::regel
     end
 
     SELF -.->|"fordert grünen Lauf"| CIJ
@@ -481,7 +500,7 @@ flowchart TB
     </section>
 
     <!-- ============ TAB 4: HERMES-PIPELINE ============ -->
-    <section class="tab-panel" data-tab="hermes-pipeline">
+    <section class="tab-panel" id="tab-panel-hermes-pipeline" data-tab="hermes-pipeline" role="tabpanel" aria-labelledby="tab-btn-hermes-pipeline" tabindex="0">
       <h2>Workflow hermes-pipeline (Claude-Limit-Fallback)</h2>
       <p class="diagram-note">Zweiter Workflow (Issue #58): dieselbe Pipeline wie claude-pipeline, aber Coder- und Reviewer-Rolle laufen als Hermes-Sub-Agenten (delegate_task, Lead-delegiert, isolierter Kontext). Farben wie im Diagramm darüber; Ampel-Logik: amber = Sub-Agent-Runs, rot = Review, grün = OK.</p>
       <div class="diagram-container">
@@ -550,7 +569,7 @@ flowchart TB
     </section>
 
     <!-- ============ TAB 5: BPMN (PNG-EINBETTUNG) ============ -->
-    <section class="tab-panel" data-tab="bpmn">
+    <section class="tab-panel" id="tab-panel-bpmn" data-tab="bpmn" role="tabpanel" aria-labelledby="tab-btn-bpmn" tabindex="0">
       <h2>BPMN-Übersicht</h2>
       <p class="diagram-note">Eingebettet aus docs/workflow.png (bestehendes Rendering, kein neues Rendern).</p>
       <div class="diagram-container">
@@ -620,33 +639,66 @@ flowchart TB
 
   <script>
     // ---- Tab-Navigation (Vanilla-JS, kein Framework, kein Build-Schritt) ----
+    // ARIA-Tab-Pattern: role=tablist/tab/tabpanel, aria-controls/aria-labelledby,
+    // Pfeiltasten-Navigation (Auswahl folgt dem Fokus — automatic activation).
     // Genau ein Diagramm je Tab. Jedes Panel wird LAZY gerendert: erst beim ersten
     // Aktivieren (mermaid misst Label-Größen über das Layout — in ausgeblendeten
     // Containern funktioniert das nicht zuverlässig). Danach wird nur umgeschaltet.
+    // Deep-Link je Tab über den URL-Hash (#<tab-id>): der Wechsel setzt den Hash
+    // (history.replaceState, kein Extra-History-Eintrag), beim Laden wird er
+    // wiederhergestellt — unbekannter/fehlender Hash → erster Tab.
+    const tabButtons = [...document.querySelectorAll('.tab-btn')];
+    const tabPanels = [...document.querySelectorAll('.tab-panel')];
+    const tabs = tabButtons.map(b => b.dataset.tab);
+
     let renderedTabs = new Set();
     async function renderPanel(tabId) {
       if (renderedTabs.has(tabId)) return;
-      renderedTabs.add(tabId);
-      await mermaid.run({ querySelector: `.tab-panel[data-tab="${tabId}"] .mermaid` });
+      try {
+        await mermaid.run({ querySelector: `.tab-panel[data-tab="${tabId}"] .mermaid` });
+        renderedTabs.add(tabId); // erst NACH erfolgreichem Rendern — bei Fehler wird beim nächsten Aktivieren erneut gerendert
+      } catch (err) {
+        console.error(`Mermaid-Renderfehler in Tab "${tabId}" — Retry beim nächsten Aktivieren:`, err);
+        throw err;
+      }
     }
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.tab-btn').forEach(b => {
-          const active = b === btn;
-          b.classList.toggle('active', active);
-          b.setAttribute('aria-selected', String(active));
-        });
-        document.querySelectorAll('.tab-panel').forEach(p =>
-          p.classList.toggle('active', p.dataset.tab === btn.dataset.tab));
-        renderPanel(btn.dataset.tab);
+
+    function activateTab(tabId, { render = true, updateHash = true } = {}) {
+      if (!tabs.includes(tabId)) return false;
+      tabButtons.forEach(b => {
+        const active = b.dataset.tab === tabId;
+        b.classList.toggle('active', active);
+        b.setAttribute('aria-selected', String(active));
+        b.tabIndex = active ? 0 : -1;
       });
+      tabPanels.forEach(p => p.classList.toggle('active', p.dataset.tab === tabId));
+      if (updateHash) history.replaceState(null, '', `#${tabId}`);
+      if (render) renderPanel(tabId).catch(() => {}); // Fehler ist geloggt; Klicks bleiben bedienbar
+      return true;
+    }
+
+    tabButtons.forEach(btn =>
+      btn.addEventListener('click', () => activateTab(btn.dataset.tab)));
+
+    // Pfeiltasten-Navigation innerhalb der Tab-Leiste (Home/End inklusive)
+    document.querySelector('.tab-bar').addEventListener('keydown', e => {
+      let idx = null;
+      if (e.key === 'ArrowRight') idx = tabs.indexOf(document.activeElement?.dataset.tab) + 1;
+      else if (e.key === 'ArrowLeft') idx = tabs.indexOf(document.activeElement?.dataset.tab) - 1;
+      else if (e.key === 'Home') idx = 0;
+      else if (e.key === 'End') idx = tabs.length - 1;
+      if (idx === null) return;
+      e.preventDefault();
+      const next = tabButtons[(idx + tabs.length) % tabs.length];
+      next.focus();
+      activateTab(next.dataset.tab);
     });
 
     // Premium-Dark-Theme: 'base' ist das einzige Mermaid-Theme, bei dem themeVariables vollständig greifen.
     // ZENTRALE Schrift-Skala für ALLE Diagramme (keine per-Diagramm-Streuung):
     //   Node-Text / Cluster-Titel: 16px (themeVariables.fontSize)
     //   Edge-Labels:               14px (themeCSS .edgeLabel)
-    //   Sub-Text in Nodes (<span class="sub">, ersetzt die <small>-Streuung): 13px
+    //   Sub-Text in Nodes (<span class='sub'>, ersetzt die <small>-Streuung): 13px
     const themeCSS = `
       .node rect, .node polygon, .node circle, .node path.basic {
         filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.55));
@@ -724,6 +776,11 @@ flowchart TB
       securityLevel: 'loose'
     });
 
+    // Start-Tab: URL-Hash wiederherstellen (#claude-pipeline o. ä.), unbekannter
+    // oder fehlender Hash → erster Tab. Rendern erst nach fontsReady (siehe unten).
+    const initialTab = tabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : tabs[0];
+    activateTab(initialTab, { render: false });
+
     // Erst rendern, wenn JetBrains Mono geladen ist: Mermaid misst die Label-Größen beim Rendern,
     // mit Fallback-Font würden Labels danach abgeschnitten.
     const fontsReady = Promise.all([
@@ -731,7 +788,7 @@ flowchart TB
       document.fonts.load('700 16px "JetBrains Mono"')
     ]).catch(() => {});
     Promise.race([fontsReady, new Promise(r => setTimeout(r, 3000))])
-      .then(() => renderPanel(document.querySelector('.tab-btn.active').dataset.tab));
+      .then(() => renderPanel(document.querySelector('.tab-btn.active').dataset.tab).catch(() => {}));
   </script>
 </body>
 </html>
