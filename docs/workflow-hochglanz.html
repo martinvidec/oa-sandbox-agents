@@ -231,25 +231,27 @@ flowchart TD
       <pre class="mermaid">
 %%{init: {"flowchart":{"nodeSpacing":45,"rankSpacing":60,"curve":"basis","useMaxWidth":false}}}%%
 flowchart TB
-    subgraph DSL1["📜 DSL — workflow/"]
+    subgraph DSL1["📜 DSL — workflow/&lt;id&gt;/"]
         direction LR
-        ROLES["<b>roles.yaml</b><br/><small>Rollen · Tool-Sets · Budgets</small>"]:::dslfile
-        STATES["<b>states.yaml</b><br/><small>Labels · Übergänge</small>"]:::dslfile
-        RULES["<b>rules.yaml</b><br/><small>Regeln D1–D8 · Fakten</small>"]:::dslfile
-        PIPE["<b>pipeline.yaml</b><br/><small>Schritte der Pipeline</small>"]:::dslfile
+        REG["<b>registry.yaml</b><br/><small>Instanzen · genau ein active: true</small>"]:::dslfile
+        ROLES["<b>workflow/&lt;id&gt;/roles.yaml</b><br/><small>Rollen · Tool-Sets · Budgets</small>"]:::dslfile
+        STATES["<b>workflow/&lt;id&gt;/states.yaml</b><br/><small>Labels · Übergänge</small>"]:::dslfile
+        RULES["<b>workflow/&lt;id&gt;/rules.yaml</b><br/><small>Regeln D1–D8 · Fakten</small>"]:::dslfile
+        PIPE["<b>workflow/&lt;id&gt;/pipeline.yaml</b><br/><small>Schritte der Pipeline</small>"]:::dslfile
     end
 
     subgraph DSL2["⚙️ scripts/validate-workflow.mjs"]
         direction TB
-        E1["<b>Ebene 1 — Schema</b> (ajv)<br/><small>4 Dateien · Referenzauflösung</small>"]:::script
+        E1["<b>Ebene 1 — Schema</b> (ajv)<br/><small>registry.yaml + 4 Instanz-Dateien<br/>· Referenzauflösung</small>"]:::script
         E2["<b>Ebene 2 — Konsistenz-Linter</b><br/><small>2a Wildcard-Sicherheit · 2b Zustandsmaschine<br/>2c D2-Prosa ↔ roles.yaml · 2d Regeln · 2e Pipeline</small>"]:::script
-        ST["<b>Selbsttest</b><br/><small>über 120 Fälle · läuft bei jedem Lauf mit<br/>Melder + Gegenrichtung</small>"]:::script
+        ST["<b>Selbsttest</b><br/><small>144 Fälle · läuft bei jedem Lauf mit<br/>Melder + Gegenrichtung</small>"]:::script
     end
 
-    subgraph DSL3["📄 Generierung — render-agents.mjs"]
+    subgraph DSL3["📄 Generierung — render-workflow.mjs"]
         direction LR
-        GEN["<b>render-agents.mjs --check</b><br/><small>generiert == eingecheckt</small>"]:::script
-        AG["<b>AGENTS.md</b><br/><small>Rollen- + Label-Tabelle<br/>zwischen dsl:*-Markern</small>"]:::agents
+        GEN["<b>render-workflow.mjs --check</b><br/><small>generiert == eingecheckt</small>"]:::script
+        WF["<b>WORKFLOW.md</b><br/><small>Rollen-, Label-, Übergangs-,<br/>Regel- und Pipeline-Tabelle</small>"]:::agents
+        AG["<b>AGENTS.md</b><br/><small>aktiv-Block zwischen<br/>dsl:active-workflow-Markern</small>"]:::agents
     end
 
     subgraph DSL4["🏁 Ergebnis"]
@@ -261,21 +263,24 @@ flowchart TB
 
     subgraph DSL5["🐙 CI + Regel 1"]
         direction LR
-        CIJ["<b>CI-Job workflow-dsl</b><br/><small>pull_request + push auf main<br/>2 Prüfschritte · NODE_PATH</small>"]:::ci
+        CIJ["<b>CI-Job workflow-dsl</b><br/><small>pull_request + push auf main<br/>2 Prüfschritte · NODE_PATH<br/>Validator + render-workflow --check</small>"]:::ci
         SELF["<b>DSL_self_validation</b><br/><small>Regel 1 in rules.yaml<br/>jede Workflow-Änderung<br/>braucht einen grünen Lauf</small>"]:::regel
     end
 
     SELF -.->|"fordert grünen Lauf"| CIJ
     CIJ -->|"Schritt 1"| E1
     CIJ -->|"Schritt 2"| GEN
+    REG --> E1
     ROLES --> E1
     STATES --> E1
     RULES --> E1
     PIPE --> E1
     ROLES -.-> GEN
     STATES -.-> GEN
+    PIPE -.-> GEN
     E1 -->|"Schema erfüllt"| E2
     ST -.->|"prüft die Prüfer"| E2
+    GEN -->|"Vergleich"| WF
     GEN -->|"Vergleich"| AG
     AG -.->|"D2-Prosa (2c)"| E2
     E2 --> OK

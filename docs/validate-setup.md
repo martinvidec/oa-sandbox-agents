@@ -5,19 +5,28 @@ Der Workflow ist unter [`workflow/`](../workflow/) maschinenlesbar spezifiziert
 
 | Datei | Inhalt | generiert daraus |
 |---|---|---|
-| [`workflow/roles.yaml`](../workflow/roles.yaml) | Rollen, Tool-Allowlists (AGENTS.md D2), Forbidden-Patterns, Budgets, `merge_allowed` (D1) | Rollen-Tabelle in AGENTS.md |
-| [`workflow/states.yaml`](../workflow/states.yaml) | Label-Zustandsmaschine mit Owner je Übergang und Invarianten (`max_review_loops`, `done_requires`) | Label-Tabelle in AGENTS.md |
-| [`workflow/rules.yaml`](../workflow/rules.yaml) | Direktiven D1–D8 als prüfbare Invarianten (`on`/`assert`/`check`/`remedy`/`source`) plus die Punkte, die nur Prosa-Konvention sind | — (Begründungsprosa bleibt Handtext) |
-| [`workflow/pipeline.yaml`](../workflow/pipeline.yaml) | Pipeline-Schritte mit strukturierten pre-/postconditions, gebunden an Rollen, Zustände, Fakten und Regeln | — |
+| [`workflow/registry.yaml`](../workflow/registry.yaml) | Registry der DSL-Instanzen: `id` (slug-förmig), `description`, `active` — genau **ein** Eintrag trägt `active: true`; der Loader lädt nur diese Instanz | aktiv-Block in AGENTS.md |
+| [`workflow/<id>/roles.yaml`](../workflow/claude-pipeline/roles.yaml) | Rollen, Tool-Allowlists (AGENTS.md D2), Forbidden-Patterns, Budgets, `merge_allowed` (D1) | Rollen-Tabelle in WORKFLOW.md |
+| [`workflow/<id>/states.yaml`](../workflow/claude-pipeline/states.yaml) | Label-Zustandsmaschine mit Owner je Übergang und Invarianten (`max_review_loops`, `done_requires`) | Label- und Übergangs-Tabelle in WORKFLOW.md |
+| [`workflow/<id>/rules.yaml`](../workflow/claude-pipeline/rules.yaml) | Direktiven D1–D8 als prüfbare Invarianten (`on`/`assert`/`check`/`remedy`/`source`) plus die Punkte, die nur Prosa-Konvention sind | — (Begründungsprosa bleibt Handtext) |
+| [`workflow/<id>/pipeline.yaml`](../workflow/claude-pipeline/pipeline.yaml) | Pipeline-Schritte mit strukturierten pre-/postconditions, gebunden an Rollen, Zustände, Fakten und Regeln | Pipeline-Tabelle in WORKFLOW.md |
+
+Die generierten Tabellen stehen in [`WORKFLOW.md`](../WORKFLOW.md) (Repo-Root); AGENTS.md ist
+dünnschnittig — es behält nur den aktiv-Block (Marker `<!-- dsl:active-workflow:start/end -->`)
+und verweist auf WORKFLOW.md.
 
 Zwei Skripte arbeiten darauf:
 
 - [`scripts/validate-workflow.mjs`](../scripts/validate-workflow.mjs) — prüft die DSL
-  (Schema, Wildcard-Sicherheitsanalyse der Tool-Sets, Abgleich der D2-Prosa von AGENTS.md gegen
-  die Tool-Sets, Zustandsmaschine). **Läuft in CI**
+  (Registry-Invarianten, Schema, Wildcard-Sicherheitsanalyse der Tool-Sets, Abgleich der D2-Prosa
+  von AGENTS.md gegen die Tool-Sets, Zustandsmaschine, Generierungs-Vergleich von WORKFLOW.md und
+  AGENTS.md). **Läuft in CI**
   (`.github/workflows/ci.yml`, Job `workflow-dsl`) und lokal.
-- [`scripts/render-agents.mjs`](../scripts/render-agents.mjs) — generiert die beiden Tabellen
-  von AGENTS.md aus der DSL und vergleicht sie mit dem eingecheckten Stand. **Läuft ebenfalls in CI.**
+- [`scripts/render-workflow.mjs`](../scripts/render-workflow.mjs) — generiert WORKFLOW.md und den
+  aktiv-Block von AGENTS.md aus der aktiven Instanz und vergleicht sie mit dem eingecheckten
+  Stand. **Läuft ebenfalls in CI.** (Nachfolger von `render-agents.mjs`, das entfernt wurde —
+  seine Funktionalität ist in der Lib [`scripts/render-workflow-lib.mjs`](../scripts/render-workflow-lib.mjs)
+  aufgegangen.)
 
 ## One-time Setup (lokal)
 
@@ -68,7 +77,7 @@ Aus dem Repo-Root bzw. Worktree, mit `NODE_PATH` auf die Installation aus dem Se
 ```bash
 export NODE_PATH=~/.cache/oa-validate/node_modules
 node scripts/validate-workflow.mjs
-node scripts/render-agents.mjs --check
+node scripts/render-workflow.mjs --check
 ```
 
 **`NODE_PATH` wird exportiert, nicht dem Befehl vorangestellt.** `NODE_PATH=… node scripts/…`
@@ -89,10 +98,12 @@ node scripts/validate-workflow.mjs [--root <verzeichnis>] [--json] [--selftest]
 - `--root` — Repo-Wurzel, Default das Arbeitsverzeichnis
 - `--json` — Report als JSON statt als Text (Felder: `ok`, `geprueft`, `selftest`, `errors`, `warnings`)
 - `--selftest` — nur den Selbsttest laufen lassen (er läuft sonst bei jedem Lauf mit); geprüft
-  werden Sicherheitsanalyse, Subsumptionsvergleich und D2-Prosa-Abgleich
+  werden Sicherheitsanalyse, Subsumptionsvergleich, D2-Prosa-Abgleich, Regel- und
+  Pipeline-Konsistenz, Registry-Invarianten und Generierungs-Vergleich
 
 Die Verbotsformen für den Subsumptionsteil des Selbsttests kommen aus `forbidden_tools` von
-`roles.yaml`, nicht aus einer zweiten Liste im Skript: Eine handgepflegte Kopie liefe stumm
+`roles.yaml` der aktiven Instanz (über `workflow/registry.yaml` aufgelöst), nicht aus einer zweiten
+Liste im Skript: Eine handgepflegte Kopie liefe stumm
 auseinander (Review-Befund R2 zu PR #45). `--selftest` liest die Datei dafür direkt mit `js-yaml`;
 ist sie nicht lesbar (Modul nicht auflösbar, Datei fehlt oder kaputt) oder erfüllt sie im vollen
 Lauf das Schema nicht, laufen die übrigen Fälle weiter und die Subsumptionsfälle werden als
@@ -102,28 +113,56 @@ Exit-Code: `0` keine Fehler (Warnungen erlaubt), `1` Fehler gefunden, `2` Setup-
 Laufzeitfehler (Module nicht auflösbar, Datei fehlt, YAML kaputt). `1` bedeutet also immer: Die
 Prüfung lief durch und hat Befunde.
 
-### render-agents.mjs
+### render-workflow.mjs
 
 ```
-node scripts/render-agents.mjs [--check|--write|--print] [--root <verzeichnis>]
+node scripts/render-workflow.mjs [--check|--write|--write-workflow-only|--print] [--root <verzeichnis>]
 ```
 
 - `--check` (Default) — generiert gegen eingecheckt vergleichen; Abweichung = Exit-Code `1`
-- `--write` — die Fragmente zwischen die Marker in AGENTS.md schreiben
+- `--write` — die Fragmente zwischen die Marker in WORKFLOW.md schreiben **und** den aktiv-Block
+  in AGENTS.md
+- `--write-workflow-only` — nur WORKFLOW.md schreiben, AGENTS.md unangetastet lassen (Übergangs-
+  modus, wenn die AGENTS.md-Struktur gerade von Hand umgebaut wird)
 - `--print` — die Fragmente auf stdout ausgeben
 
-Die generierten Bereiche in AGENTS.md sind mit HTML-Kommentaren markiert
-(`<!-- dsl:roles-table:start -->` … `:end`, `<!-- dsl:label-table:start -->` … `:end`). Alles
-außerhalb der Marker — insbesondere die Begründungsprosa der Direktiven — bleibt Handtext und wird
-nicht angefasst (Spec § 6). **Quelle ist die DSL:** Wer eine Rolle, ein Tool-Set oder ein Label
-ändert, ändert `workflow/*.yaml` und lässt die Tabelle neu schreiben, nicht umgekehrt.
+Die generierten Bereiche sind mit HTML-Kommentaren markiert — in WORKFLOW.md
+(`<!-- dsl:roles-table:start -->` … `:end`, `label-table`, `transitions-table`, `rules-table`,
+`pipeline-steps`), in AGENTS.md der aktiv-Block (`<!-- dsl:active-workflow:start -->` … `:end`).
+Alles außerhalb der Marker — insbesondere die Begründungsprosa der Direktiven in AGENTS.md — bleibt
+Handtext und wird nicht angefasst (Spec § 6). **Quelle ist die DSL:** Wer eine Rolle, ein Tool-Set,
+ein Label oder einen Pipeline-Schritt ändert, ändert `workflow/<id>/*.yaml` und lässt die Dateien
+neu schreiben, nicht umgekehrt.
 
 Verglichen wird mit Whitespace-Toleranz (Zellen getrimmt, Trennzeile normalisiert); der Zelltext
 selbst muss zeichengenau übereinstimmen.
 
 ## Was geprüft wird
 
-**Ebene 1 — Schema** (ajv): `roles.yaml`, `states.yaml`, `rules.yaml` und `pipeline.yaml` gegen
+**Ebene 0 — Registry** (`workflow/registry.yaml`): Schema (ajv) und Invarianten. Der Loader lädt
+ausschließlich die Instanz mit `active: true`; bleibt die Registry fehlerhaft, entfallen alle
+Folgeprüfungen (statt Dutzender Folgefehler über fehlende Pfade):
+
+| Befund | Bedeutung |
+|---|---|
+| `registry-id-form` | Workflow-ID ist nicht slug-förmig (`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`) |
+| `registry-id-doppelt` | eine Workflow-ID ist doppelt vergeben |
+| `registry-kein-aktiv` / `registry-mehrfach-aktiv` | kein bzw. mehr als ein Eintrag mit `active: true` |
+| `registry-instanz-unvollstaendig` | ein Eintrag ohne alle vier DSL-Dateien unter `workflow/<id>/` |
+
+**Generierte Markdown-Fragmente:** WORKFLOW.md (fünf Fragmente zwischen den `dsl:*-Markern`) und
+der aktiv-Block von AGENTS.md werden von render-workflow.mjs aus der DSL generiert — der Validator
+vergleicht sie mit demselben Verfahren (`generiert == eingecheckt`, Whitespace-Toleranz, Zelltext
+zeichengenau):
+
+| Befund | Bedeutung |
+|---|---|
+| `generiert-fehlt` | WORKFLOW.md bzw. AGENTS.md fehlt |
+| `generiert-marker-fehlen` | der Marker-Bereich (`dsl:<fragment>:start/end`) fehlt |
+| `generiert-abweichend` | der eingecheckte Inhalt weicht vom generierten Stand ab |
+
+**Ebene 1 — Schema** (ajv): `registry.yaml` sowie `roles.yaml`, `states.yaml`, `rules.yaml` und
+`pipeline.yaml` der **aktiven Instanz** gegen
 JSON-Schemata im Skript, dazu die
 Referenzauflösung: Rollen mit D2-Set haben Allowlist und Budget, Übergangs-Owner sind bekannte
 Rollen (bzw. `human`/`any_agent`), `label_table` nennt existierende Zustände.
@@ -164,8 +203,9 @@ Owner, keine Sackgasse, terminale Zustände ohne Ausgang, `done` nur über einen
 Schleifenübergang plus Ausstieg in denselben Zustand hinein), Label-Tabelle deckt jedes Label
 genau einmal ab.
 
-**Ebene 2c — D2-Prosa gegen die Tool-Sets** (`AGENTS.md ↔ workflow/roles.yaml`): `render-agents.mjs`
-vergleicht nur die beiden Marker-Bereiche (Rollen- und Label-Tabelle). Die Tool-Sets stehen in der
+**Ebene 2c — D2-Prosa gegen die Tool-Sets** (`AGENTS.md ↔ workflow/<id>/roles.yaml`):
+`render-workflow.mjs`
+vergleicht nur die generierten Fragmente (WORKFLOW.md und der aktiv-Block von AGENTS.md). Die Tool-Sets stehen in der
 Begründungsprosa von D2 und bleiben Handtext (Spec § 6) — bis hierher konnten Prosa und DSL
 auseinanderlaufen, ohne dass CI es merkt (M6 aus PR #45), ausgerechnet beim wertvollsten Teil der
 DSL. Der Abgleich läuft deshalb **in beide Richtungen**:
@@ -242,7 +282,7 @@ so teuer wie ein Durchrutscher, deshalb vergleicht jeder Fall die **vollständig
 ein zusätzlicher Fehlalarm im selben Fall fällt damit auf. `prosa-datei-fehlt` entsteht eine Ebene
 darüber beim Lesen der Datei und hat deshalb keinen Selbsttest-Fall.
 
-**Ebene 2d — Regel-Konsistenz** (`workflow/rules.yaml`): jede Regel hat `on`, `assert`, `check`,
+**Ebene 2d — Regel-Konsistenz** (`workflow/<id>/rules.yaml`): jede Regel hat `on`, `assert`, `check`,
 `remedy` und `source`; `check`-Quelle kommt aus dem Fakt-Vokabular (`gh_api`, `git_state`,
 `process_exit`, `ci_run`); jede Direktive D1–D8 ist entweder durch eine Regel abgedeckt oder als
 `documented_convention` mit Begründung markiert (`direktive-ohne-abdeckung`), und Konventionen
@@ -258,7 +298,7 @@ liegt prozessual beim Lead und wird erst mit der Ebene 3 (Runtime-Replay) maschi
 Die Abgrenzung der Review-Schleife von D8 ist ein eigener harter Befund (`d8-review-schleife`)
 **mit Gegenrichtung** — eine Nicht-D8-Regel am selben Trigger schweigt.
 
-**Ebene 2e — Pipeline-Konsistenz** (`workflow/pipeline.yaml`): jeder Schritt referenziert nur
+**Ebene 2e — Pipeline-Konsistenz** (`workflow/<id>/pipeline.yaml`): jeder Schritt referenziert nur
 existierende Zustände, Labels, Rollen und Fakt-Vokabular (`unbekannte-bedingung`,
 `schritt-unerreichbar`); die Bedingungen sind strukturierte Formen (`label_check`,
 `actor_check`, `ci_check` — eine pro Eintrag), freie Schlüssel werden gemeldet. Die fünf Schritte
@@ -298,7 +338,7 @@ der CI-Beleg damit zugleich der DSL-Beleg. Ein lokaler Lauf vor dem Push spart d
 
 ```
 Validierungs-Beleg: node scripts/validate-workflow.mjs, exit 0, 0 Fehler / 0 Warnungen
-                    node scripts/render-agents.mjs --check, exit 0
+                    node scripts/render-workflow.mjs --check, exit 0
 ```
 
 Anders als [`verify-mermaid.mjs`](../scripts/verify-mermaid.mjs) braucht das keinen eigenen

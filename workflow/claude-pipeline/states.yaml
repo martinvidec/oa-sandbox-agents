@@ -1,6 +1,6 @@
 # Label-Zustandsmaschine des Issue-Lebenszyklus — maschinenlesbare Fassung der Label-Tabelle
 # aus AGENTS.md (Arbeitsaufträge) und der Pipeline aus docs/workflow.md.
-# Die Label-Tabelle in AGENTS.md wird hieraus generiert (scripts/render-agents.mjs);
+# Die Label-Tabelle in WORKFLOW.md wird hieraus generiert (scripts/render-workflow.mjs);
 # geprüft von scripts/validate-workflow.mjs (Erreichbarkeit, Owner je Übergang, Invarianten).
 #
 # `owner` ist die Rolle aus workflow/roles.yaml, die den Übergang auslöst; dazu die beiden
@@ -9,7 +9,7 @@
 # `source` (eine andere belegte Stelle). Ein falscher Direktiven-Verweis an normativer Stelle
 # ist schlimmer als gar keiner — deshalb gilt `source`, wo keine Direktive die Regel trägt.
 version: 1
-source: "AGENTS.md — Arbeitsaufträge (Label-Tabelle); docs/workflow.md — Pipeline"
+source: "AGENTS.md — Arbeitsaufträge (Pipeline); WORKFLOW.md — Label-Tabelle"
 initial: ready
 
 # Vokabular für `requires` und `invariants.done_requires`: nur benannte, beobachtbare Fakten
@@ -120,7 +120,7 @@ transitions:
     to: needs_human
     owner: any_agent
     trigger: "Briefing unklar, Rückfrage an Martin nötig"
-    source: "AGENTS.md — Arbeitsaufträge, Label-Tabelle: `needs-human` setzt jeder Agent, der nicht weiterkommt"
+    source: "AGENTS.md — Arbeitsaufträge (Pipeline): Labels mit genau einem Owner je Übergang; Semantik definiert in dieser Datei (label_state.ausloeser)"
   # Der einzige Eskalationsübergang, den D7 selbst trägt: abgebrochener Coder-, Fix- oder
   # Sync-Run (D7, „Eskalation"; D8, „`main` holen" für den Merge-Fall).
   - id: escalate_in_progress
@@ -140,13 +140,13 @@ transitions:
     to: blocked
     owner: any_agent
     trigger: "Externe Blockade während des Runs"
-    source: "AGENTS.md — Arbeitsaufträge, Label-Tabelle: `blocked` bei externer Blockade"
+    source: "AGENTS.md — Arbeitsaufträge (Pipeline): Labels mit genau einem Owner je Übergang; Semantik definiert in dieser Datei (label_state.ausloeser)"
   - id: block_review
     from: review
     to: blocked
     owner: any_agent
     trigger: "Externe Blockade während der Review-Schleife"
-    source: "AGENTS.md — Arbeitsaufträge, Label-Tabelle: `blocked` bei externer Blockade"
+    source: "AGENTS.md — Arbeitsaufträge (Pipeline): Labels mit genau einem Owner je Übergang; Semantik definiert in dieser Datei (label_state.ausloeser)"
   # Owner ist der Lead, nicht Martin: Die Entscheidung trifft Martin (`requires`), das Label
   # setzt und den nächsten Run delegiert der Lead (`agent:in-progress` — set_by).
   - id: resume_after_human
@@ -162,7 +162,7 @@ transitions:
     owner: lead
     trigger: "Blockade aufgelöst; der Lead delegiert den nächsten Run"
     requires: [blocker_resolved]
-    source: "AGENTS.md — Arbeitsaufträge, Label-Tabelle: `blocked` gilt bis zur Auflösung der externen Blockade"
+    source: "AGENTS.md — Arbeitsaufträge (Pipeline): Labels mit genau einem Owner je Übergang; Semantik definiert in dieser Datei (label_state.ausloeser)"
 
 invariants:
   # Maximal zwei Review-Schleifen, danach needs-human (docs/workflow.md, Review-Schleife 5).
