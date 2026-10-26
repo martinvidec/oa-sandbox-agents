@@ -27,6 +27,10 @@ Zwei Skripte arbeiten darauf:
   Stand. **Läuft ebenfalls in CI.** (Nachfolger von `render-agents.mjs`, das entfernt wurde —
   seine Funktionalität ist in der Lib [`scripts/render-workflow-lib.mjs`](../scripts/render-workflow-lib.mjs)
   aufgegangen.)
+- [`scripts/replay-workflow.mjs`](../scripts/replay-workflow.mjs) — Runtime-Replay (Ebene 3):
+  subsumiert nach dem Merge die maschinell prüfbaren Regeln aus `rules.yaml` gegen die
+  tatsächlich gelaufene Zustandssequenz des Zyklus (GitHub-Timeline + lokaler Git-Zustand).
+  **Läuft lokal als Lead-Nachlauf nach jedem Merge** (nicht in CI).
 
 ## One-time Setup (lokal)
 
@@ -136,6 +140,34 @@ neu schreiben, nicht umgekehrt.
 
 Verglichen wird mit Whitespace-Toleranz (Zellen getrimmt, Trennzeile normalisiert); der Zelltext
 selbst muss zeichengenau übereinstimmen.
+
+### replay-workflow.mjs
+
+```
+node scripts/replay-workflow.mjs <pr-nr> [--json] [--no-local] [--root <verzeichnis>] [--selftest]
+```
+
+Der Runtime-Replay (Ebene 3) liest pro gemergtem PR:
+
+- `gh pr view <n> --json …` — PR-Metadaten (Body, Merge-Actor, Head-Branch),
+- `gh api repos/<owner>/<repo>/issues/<n>/timeline` — die Timeline des PRs (Kommentare mit
+  Zeitstempeln, `ready_for_review`, `merged` samt Merge-Actor) **und** die des gebundenen
+  Issues (aus `Closes #N`) für die Label-Zustandsübergänge — Labels hängen am Issue,
+- lokal `git worktree list` / `git branch --list` — Ist-Zustand für `cleanup_after_merge`.
+
+Daraus leitet das Skript die gelaufene Zustandssequenz ab und subsumiert **nur** die Regeln mit
+`runtime_checkable: true` (D1 Merge-Actor, D3 Closes-Zählung, D4 CI-Beleg vor `agent:review`,
+Cleanup-Reste). Alle übrigen Regeln erscheinen als `nicht-pruefbar`-Befunde samt Begründung —
+ebenso einzelne Komponenten prüfbarer Regeln, deren Belege historisch nicht mehr erreichbar sind
+(Draft-Status zum Label-Zeitpunkt, Rollenzuordnung des Merge-Actors ohne Login-Mapping,
+Entfernungs-Zeitpunkt des Cleanups). Kein stiller Skip: Was nicht geprüft wird, sagt das Skript.
+
+Befundmodell wie der Validator (`id`, `severity`, `rule`, `code`, `message`); Exit-Code `1` nur
+bei `fehler`, `0` bei Warnungen und deklarierten Lücken, `2` bei Setup-Fehlern. Die Selbsttest-Fälle
+liegen als Fixtures in [`scripts/test-fixtures/replay/`](../scripts/test-fixtures/replay/) und laufen
+über `--selftest` gegen die reine Subsumtionsfunktion — ohne Netz, Melder und Gegenrichtung
+(saubere Sequenz schweigt, Bot-Merge, Cleanup-Reste, fehlende Label-Sequenz, Merge ohne
+Review-Label, fehlender CI-Beleg, doppelte `Closes`-Form, lokaler Zustand unlesbar).
 
 ## Was geprüft wird
 
@@ -298,10 +330,12 @@ ein zusätzlicher Fehlalarm im selben Fall fällt damit auf. `prosa-datei-fehlt`
 darüber beim Lesen der Datei und hat deshalb keinen Selbsttest-Fall.
 
 **Ebene 2d — Regel-Konsistenz** (`workflow/<id>/rules.yaml`): jede Regel hat `on`, `assert`, `check`,
-`remedy` und `source`; `check`-Quelle kommt aus dem Fakt-Vokabular (`gh_api`, `git_state`,
+`remedy`, `source` sowie `runtime_checkable` (mit `check_hint` bei `true`) — die Deklaration, ob
+der Runtime-Replay sie subsumieren kann, ist selbst Teil der Konsistenzprüfung (Issue #60);
+`check`-Quelle kommt aus dem Fakt-Vokabular (`gh_api`, `git_state`,
 `process_exit`, `ci_run`); jede Direktive D1–D8 ist entweder durch eine Regel abgedeckt oder als
 `documented_convention` mit Begründung markiert (`direktive-ohne-abdeckung`), und Konventionen
-verweisen sauber auf die kommende Ebene 3. Jeder `source`-Querverweis nennt eine **fette
+verweisen sauber auf die Ebene 3. Jeder `source`-Querverweis nennt eine **fette
 Überschrift aus AGENTS.md wörtlich und ohne Satzpunkt** (`ueberschrift-fehlt`,
 `ueberschrift-satzpunkt`, `quelldatei-fehlt`) — die Querverweis-Konvention ist damit zum ersten
 Mal maschinell geprüft. Ausschließlich beobachtbare Fakten: eine Regel kann ihren `check` nicht
@@ -333,6 +367,9 @@ Postconditions nennen nur den lokalen Anteil (`worktree_removed`, `local_branch_
 | `fakt-quelle-abweichend` | Regel-`check` ist nicht mit der Quelle des referenzierten Fakts vereinbar |
 | `d8-review-schleife` | eine Regel mischt D8 mit der Review-Schleife (AGENTS.md, „**Abgrenzung zur Review-Schleife**") |
 | `unbekannte-bedingung` / `schritt-unerreichbar` | Pipeline-Bedingung frei oder Schritt nicht von `first` erreichbar |
+| `runtime-checkable-fehlt` (Issue #60) | eine Regel ohne `runtime_checkable` — die Deklaration, ob der Runtime-Replay sie subsumieren kann, ist Pflicht |
+| `pruefbar-ohne-hint` (Issue #60) | `runtime_checkable: true` ohne `check_hint` — die Prüfbarkeit bleibt ohne Prüfform unbelegt |
+| `check-hint-ohne-pruefbarkeit` (Issue #60) | `check_hint` an einer Regel mit `runtime_checkable: false` — ein Prüfhinweis ohne Prüfung |
 
 > **Doku-Gleichzug.** Wer ein Tool-Set ändert, ändert `roles.yaml` **und** die D2-Prosa im selben
 > PR — das war vorher Disziplin und ist jetzt CI. Die Lektion gilt eine Ebene höher weiter und
@@ -343,8 +380,14 @@ Postconditions nennen nur den lokalen Anteil (`worktree_removed`, `local_branch_
 > Ebene 1 um `rules.yaml`/`pipeline.yaml`, Ebene 2d/2e samt Befundtabellen, aktualisierter
 > Selbsttest-Beschreibung.)
 
-**Ebene 3 — Runtime-Replay** (letzter Zyklus aus beobachtbaren Ereignissen gegen `rules.yaml`)
-ist **nicht** Teil dieses MVP (Spec § 5.5) — eigenes Folge-Issue.
+**Ebene 3 — Runtime-Replay** (Spec § 5.5): seit Issue #60 als eigenes Skript
+[`replay-workflow.mjs`](../scripts/replay-workflow.mjs) umgesetzt (Details und Aufruf: oben,
+„replay-workflow.mjs"). Nach jedem Merge subsumiert es die Regeln mit `runtime_checkable: true`
+aus `rules.yaml` gegen die tatsächlich gelaufene Zustandssequenz des Zyklus — Quelle der Wahrheit
+sind die GitHub-Daten (Label-Ereignisse mit Zeitstempeln, `merged`-Event samt Merge-Actor,
+Kommentare) plus der lokale Git-Ist-Zustand für den Cleanup. Nicht maschinell prüfbare Regeln
+(`runtime_checkable: false`) und unerreichbare Komponenten erscheinen im Bericht als
+`nicht-pruefbar`-Befunde — ehrliche Lücke statt stiller Skip.
 
 ## Einsatz in der Pipeline
 

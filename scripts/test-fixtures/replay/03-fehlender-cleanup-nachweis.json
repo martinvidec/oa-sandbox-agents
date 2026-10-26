@@ -1,0 +1,33 @@
+{
+  "id": "fehlender-cleanup-nachweis",
+  "expect_codes": ["cleanup-rest"],
+  "pr": {
+    "number": 999,
+    "title": "Fixture — Cleanup-Reste",
+    "state": "MERGED",
+    "url": "https://example.invalid/pr/999",
+    "mergedAt": "2026-01-01T12:00:00Z",
+    "mergedBy": { "login": "martin", "is_bot": false },
+    "headRefName": "feat/999-fixture",
+    "body": "Closes #998"
+  },
+  "prTimeline": [
+    { "event": "commented", "body": "CI grün: Run 123, conclusion success", "created_at": "2026-01-01T11:50:00Z", "actor": { "login": "lead-bot" } },
+    { "event": "merged", "created_at": "2026-01-01T12:00:00Z", "actor": { "login": "martin", "is_bot": false } }
+  ],
+  "issueTimeline": [
+    { "event": "labeled", "label": { "name": "agent:ready" }, "created_at": "2026-01-01T10:00:00Z", "actor": { "login": "lead-bot" } },
+    { "event": "labeled", "label": { "name": "agent:in-progress" }, "created_at": "2026-01-01T11:00:00Z", "actor": { "login": "lead-bot" } },
+    { "event": "labeled", "label": { "name": "agent:review" }, "created_at": "2026-01-01T11:55:00Z", "actor": { "login": "lead-bot" } }
+  ],
+  "local": { "verfuegbar": true, "worktrees": ["/repo/worktrees/999-fixture"], "branches": ["feat/999-fixture"] },
+  "regeln": [
+    { "id": "D1_merge_by_human", "runtime_checkable": true },
+    { "id": "D3_one_issue_per_pr", "runtime_checkable": true },
+    { "id": "D4_review_label_needs_evidence", "runtime_checkable": true },
+    { "id": "cleanup_after_merge", "runtime_checkable": true },
+    { "id": "D5_nothing_stays_local", "runtime_checkable": false }
+  ],
+  "endZustand": "done",
+  "erwarteteKette": ["ready", "in_progress", "review", "done"]
+}

@@ -68,6 +68,23 @@ Der Lead ist Ausführer der DSL, nicht Interpret der Prosa.
 5. Runtime-Replay (Ebene 3) NICHT in diesem MVP — eigenes Folge-Issue (braucht
    Session-Log-Anbindung).
 
+### 5.5 Runtime-Replay (Ebene 3) — Status
+
+> **Status (v0.3, Issue #60): implemented.** Die Umsetzung ist eigenständig und kam ohne die
+> ursprünglich vermutete Session-Log-Anbindung aus: Die Quelle der Wahrheit ist das
+> GitHub-Protokoll selbst (Label-Ereignisse mit Zeitstempeln, `merged`-Event samt Merge-Actor,
+> PR-Kommentare), ergänzt um den lokalen Git-Ist-Zustand für den Cleanup.
+
+[`scripts/replay-workflow.mjs`](../../scripts/replay-workflow.mjs) rekonstruiert aus der
+Issue-/PR-Timeline die gelaufene Zustandssequenz und subsumiert die Regeln aus `rules.yaml`, die
+dort mit `runtime_checkable: true` (+ `check_hint`) deklariert sind. Daten, die historisch nicht
+mehr existieren (gelöschte Branches/Worktrees, historischer Draft-Status, Rollenzuordnung des
+Merge-Actors ohne Login-Mapping), erzeugen `nicht-pruefbar`-Befunde mit Begründung — nie
+Annahmen. Nicht maschinell prüfbare Regeln erscheinen ebenfalls explizit als deklarierte Lücke.
+Befundmodell, Exit-Codes und Selbsttest-Fixtures
+(`scripts/test-fixtures/replay/`, Melder + Gegenrichtung) entsprechen dem Validator; der
+Replay ist Lead-Nachlauf nach dem Merge und schreibt nichts auf GitHub.
+
 ## 6. Hybrid-Entscheidung
 
 Struktur (Tabellen, Tool-Sets, Schritte) generiert aus der DSL; die

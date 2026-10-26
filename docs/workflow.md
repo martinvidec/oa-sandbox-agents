@@ -140,6 +140,31 @@ stellt die D8-Basis in den Agent-Hinweisen auf `origin/main` um, mit einer Zusat
 diesen Run (AGENTS.md D2, „Einzige Ausnahme — die D8-Basisänderung"). Wer den PR liest, findet den
 Status damit an zwei Stellen: den Checks-Reiter von GitHub und den Beleg-Kommentar.
 
+## Runtime-Replay (Lead-Nachlauf nach dem Merge)
+
+Nach jedem Merge prüft der Lead nach, dass der tatsächlich gelaufene Zyklus regelkonform war —
+nicht nur, dass die DSL-Dateien wohlgeformt sind (das übernimmt der CI-Validator, Ebene 1–2,
+[`validate-setup.md`](validate-setup.md)):
+
+```bash
+node scripts/replay-workflow.mjs <pr-nr>
+```
+
+Das Skript leitet aus den GitHub-Daten die gelaufene Zustandssequenz ab (Label-Ereignisse des
+gebundenen Issues mit Zeitstempeln, `merged`-Event samt Merge-Actor, PR-Kommentare) und
+subsumiert die maschinell prüfbaren Regeln aus `workflow/<id>/rules.yaml` — nur die Regeln mit
+`runtime_checkable: true` (D1 Merge-Actor, D3 Closes-Zählung, D4 CI-Beleg vor `agent:review`,
+Cleanup-Reste); alles andere erscheint als `nicht-pruefbar`-Befund mit Begründung, niemals als
+stiller Skip. Historisch nicht mehr erreichbare Belege (gelöschte Branches/Worktrees, historischer
+Draft-Status) werden als deklarierte Lücke ausgewiesen, nicht als Annahme gefüllt.
+
+- **Lesend:** Der Replay schreibt nichts auf GitHub (`gh pr view`, `gh api …/timeline`, lokale
+  `git`-Lesebefehle); einen Befundkommentar am Issue postet der Lead selbst.
+- **Einordnung:** nachgelagerte Prüfung (post-merge), keine Zusicherung während des Laufs.
+- **Befunde:** `fehler`-Befunde sind wie Review-Befunde zu behandeln — bei Prozesslücken ein
+  Workflow-Bug-Issue anlegen, bei Einzelvorfällen `needs-human` und Rückfrage an Martin.
+- Details, Aufrufoptionen und Befundkatalog: [`validate-setup.md`](validate-setup.md), „replay-workflow.mjs".
+
 ## Setup-Mechanismus für beliebige Repos
 
 Dieses Repo ist der **Referenz-Implementierungsort**. Für jedes neue Repo (`<repo>`):
