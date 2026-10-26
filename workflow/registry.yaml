@@ -9,8 +9,9 @@
 #   - genau ein `active: true`
 #   - jede Instanz hat alle vier DSL-Dateien
 #
-# Workflow B (`hermes-pipeline`) kommt mit eigenem Issue — er wird hier eingetragen, wenn
-# seine Instanz existiert, nicht vorher (die Invariante verlangt vollständige Instanzen).
+# Der zweite Eintrag (`hermes-pipeline`) ist der Claude-Limit-Fallback (Issue #58): identische
+# Pipeline, aber Coder- und Reviewer-Rolle laufen als Hermes-Sub-Agenten (delegate_task). Der
+# Wechsel ist eine Switch-Prozedur — docs/workflow.md, „Workflow-Wechsel".
 version: 1
 source: "AGENTS.md — aktiver Workflow; research/multi-workflow-dsl"
 
@@ -18,3 +19,6 @@ workflows:
   - id: claude-pipeline
     description: "Claude-Code-Pipeline: Lead delegiert Coder-, Reviewer- und Sync-Runs als headless Claude-Code-Runs in eigenen Worktrees."
     active: true
+  - id: hermes-pipeline
+    description: "Hermes-Pipeline (Claude-Limit-Fallback): wie claude-pipeline, aber Coder- und Reviewer-Rolle laufen als Hermes-Sub-Agenten (delegate_task, Lead-delegiert, isolierter Kontext) statt als headless Claude-Code-Runs."
+    active: false

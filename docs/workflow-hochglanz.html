@@ -244,7 +244,7 @@ flowchart TB
         direction TB
         E1["<b>Ebene 1 — Schema</b> (ajv)<br/><small>registry.yaml + 4 Instanz-Dateien<br/>· Referenzauflösung</small>"]:::script
         E2["<b>Ebene 2 — Konsistenz-Linter</b><br/><small>2a Wildcard-Sicherheit · 2b Zustandsmaschine<br/>2c D2-Prosa ↔ roles.yaml · 2d Regeln · 2e Pipeline</small>"]:::script
-        ST["<b>Selbsttest</b><br/><small>144 Fälle · läuft bei jedem Lauf mit<br/>Melder + Gegenrichtung</small>"]:::script
+        ST["<b>Selbsttest</b><br/><small>&gt;150 Fälle, beim Ausbau wachsend · läuft bei jedem Lauf mit<br/>Melder + Gegenrichtung</small>"]:::script
     end
 
     subgraph DSL3["📄 Generierung — render-workflow.mjs"]
@@ -294,6 +294,61 @@ flowchart TB
     classDef ci fill:#111827,stroke:#94a3b8,stroke-width:1.5px,color:#f1f5f9
     classDef ok fill:#052e24,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5
     classDef befund fill:#2e0f1a,stroke:#fb7185,stroke-width:1.5px,color:#fff1f2
+    classDef regel fill:#082f3a,stroke:#22d3ee,stroke-width:1.5px,color:#ecfeff
+      </pre>
+    </div>
+
+    <!-- ============ HERMES-PIPELINE (FALLBACK) ============ -->
+    <h2>Workflow hermes-pipeline (Claude-Limit-Fallback)</h2>
+    <p class="diagram-note">Zweiter Workflow (Issue #58): dieselbe Pipeline wie claude-pipeline, aber Coder- und Reviewer-Rolle laufen als Hermes-Sub-Agenten (delegate_task, Lead-delegiert, isolierter Kontext). Farben wie im Diagramm darüber; Ampel-Logik: amber = Sub-Agent-Runs, rot = Review, grün = OK.</p>
+    <div class="diagram-container">
+      <pre class="mermaid">
+%%{init: {"flowchart":{"nodeSpacing":45,"rankSpacing":60,"curve":"basis","useMaxWidth":false}}}%%
+flowchart TB
+    subgraph HP1["🧠 Hermes Lead — Orchestrator"]
+        direction LR
+        H1["Issue anlegen<br/>agent:ready"]:::lead
+        H2["Delegieren<br/>delegate_task<br/>agent:in-progress"]:::lead
+        H3["Delegationsanweisung<br/>Tool-Abgrenzung · D2-Guards<br/>Budget: max_work_steps"]:::regel
+    end
+
+    subgraph HP2["🤖 Hermes-Sub-Agenten (delegate_task · isolierter Kontext)"]
+        direction LR
+        HC["⚒️ Sub-Agent Coder<br/>Implementieren · Commits<br/>Draft-PR: Closes #N<br/>CI-Beleg am PR"]:::coder
+        HR["🔍 Sub-Agent Reviewer<br/>2. Run · sauberer Kontext<br/>Befunde als PR-Kommentare<br/>keine Edits"]:::review
+        HX["Sync-Run (D8)<br/>main holen · Fix-Run"]:::coder
+    end
+
+    subgraph HP3["⚙️ CI + Review-Schleife — max 2"]
+        direction LR
+        HCI["GitHub Actions<br/>workflow-dsl · pass/fail"]:::ci
+        HG{"Befunde?"}:::gate
+    end
+
+    subgraph HP4["🏁 Abschluss"]
+        direction LR
+        HO["Lead: Draft→Ready<br/>meldet PR #N · CI grün"]:::lead
+        HM(["👤 Martin mergt (D1)<br/>Cleanup · Switch zurück möglich"]):::martin
+    end
+
+    H1 --> H2
+    H3 -.->|"verbindliche Regeln im Task-Kontext<br/>kein maschinelles Tool-Zwangsniveau"| HC
+    H2 -->|delegate_task| HC
+    HC -->|"agent:review"| HR
+    HC --> HG
+    HX -.->|"D8-Basis / Fix-Run"| HC
+    HCI -.->|"pass/fail"| HG
+    HG -->|"Befunde"| HR
+    HR -.->|"Fix-Run (max 2 Schleifen)"| HC
+    HG -->|"keine"| HO
+    HO --> HM
+
+    classDef martin fill:#082f3a,stroke:#22d3ee,stroke-width:1.5px,color:#ecfeff
+    classDef lead fill:#052e24,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5
+    classDef coder fill:#2b1d07,stroke:#fbbf24,stroke-width:1.5px,color:#fffbeb
+    classDef review fill:#2e0f1a,stroke:#fb7185,stroke-width:1.5px,color:#fff1f2
+    classDef ci fill:#111827,stroke:#94a3b8,stroke-width:1.5px,color:#f1f5f9
+    classDef gate fill:#1e293b,stroke:#cbd5e1,stroke-width:1.5px,color:#f8fafc
     classDef regel fill:#082f3a,stroke:#22d3ee,stroke-width:1.5px,color:#ecfeff
       </pre>
     </div>
