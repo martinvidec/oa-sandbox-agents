@@ -7,6 +7,11 @@
 #   assert  — die Bedingung, ausschließlich über benannte Fakten aus `facts` (Spec § 2.3:
 #             nur beobachtbare Fakten, keine Selbstauskunft des Agenten)
 #   check   — woher der Fakt kommt (ID aus `check_sources`)
+#   runtime_checkable — deklariert pro Regel, ob der Runtime-Replay
+#             (scripts/replay-workflow.mjs, Ebene 3, Spec § 5.5) sie aus den
+#             beobachtbaren GitHub-/Git-Daten eines gemergten Zyklus subsumieren kann:
+#             `true` mit Pflicht-`check_hint`, `false` als ehrlich deklarierte Lücke —
+#             nie als stilles Schweigen (Spec § 3, Ebene 3).
 #   source  — die Belegstelle: `agents_md` nennt die **fett gesetzte Überschrift wörtlich**
 #             (Querverweis-Konvention von AGENTS.md), `doc` eine andere Stelle im Repo.
 #             Genau eines von beidem. Zitiert wird OHNE den Satzpunkt („Eskalation", nicht
@@ -178,6 +183,9 @@ rules:
       fact: dsl_validation_exit_zero
       operator: is_true
     check: ci_run
+    # Nicht aus der PR-Timeline rekonstruierbar: Die Prüfpflicht gilt global für jeden
+    # ändernden PR, der Replay eines historischen Zyklus kann den CI-Job nicht nachspielen.
+    runtime_checkable: false
     remedy: "Befunde beheben und neu pushen. Kein `agent:review`, solange der Job rot ist — der CI-Beleg ist zugleich der DSL-Beleg."
     source:
       # Keine Direktive trägt diese Regel: Sie gilt der DSL selbst, nicht dem Verhalten der
@@ -193,6 +201,8 @@ rules:
       operator: equals
       value: human
     check: gh_api
+    runtime_checkable: true
+    check_hint: "Merge-Actor aus dem `merged`-Event der PR-Timeline lesen; ein Bot-Account (`is_bot`) ist ein Verstoß. Die volle Rollenzuordnung (human vs. Agent-Rolle) bleibt ohne Login-Mapping eine deklarierte Lücke — der beobachtete Actor wird als Beleg ausgewiesen."
     remedy: "Ein Agenten-Merge lässt sich nicht zurücknehmen: Workflow-Bug-Issue anlegen, `needs-human` am betroffenen Issue setzen, Rückfrage an Martin."
     source:
       agents_md: "D1 — Merge nur durch Martin"
@@ -204,6 +214,9 @@ rules:
       fact: no_merge_tool_in_any_set
       operator: is_true
     check: process_exit
+    # Statische Ebene-2-Prüfung gegen die DSL selbst — im Replay eines historischen Zyklus
+    # nicht aus der Timeline ableitbar.
+    runtime_checkable: false
     remedy: "`gh pr merge` aus dem Set entfernen bzw. `merge_allowed: false` setzen — der Merge gehört Martin, nicht einem Tool-Set."
     source:
       agents_md: "D1 — Merge nur durch Martin"
@@ -215,6 +228,8 @@ rules:
       fact: delegated_roles_have_budget
       operator: is_true
     check: process_exit
+    # Statische Ebene-2-Prüfung gegen die DSL selbst — im Replay nicht aus der Timeline ableitbar.
+    runtime_checkable: false
     remedy: "`budget.max_turns` samt Quelle an der Rolle nachtragen — eine Delegation ohne `--max-turns` gibt es nicht."
     source:
       agents_md: "D2 — Budget-Guards"
@@ -226,6 +241,8 @@ rules:
       fact: tool_allowlist_analysis_clean
       operator: is_true
     check: process_exit
+    # Statische Ebene-2-Prüfung gegen die DSL selbst — im Replay nicht aus der Timeline ableitbar.
+    runtime_checkable: false
     remedy: "Freigabeform auf die exakte Form zurückschneiden (Push-Guard `git push -u origin HEAD`, kein `-C`, kein Sammelpattern) — oder den Eintrag streichen."
     source:
       agents_md: "Kein blankes `Bash(git *)`"
@@ -237,6 +254,8 @@ rules:
       fact: pr_closes_exactly_one_issue
       operator: is_true
     check: gh_api
+    runtime_checkable: true
+    check_hint: "PR-Body (`gh pr view <n> --json body`) auf `Closes #N`-Formen zählen — genau ein Treffer besteht die Subsumtion."
     remedy: "Scope-Ausweitung bekommt ein eigenes Issue und einen eigenen PR; der PR-Body nennt genau ein `Closes #N`."
     source:
       agents_md: "D3 — Kleine PRs"
@@ -251,6 +270,8 @@ rules:
         - fact: ci_green_evidence_comment
           operator: is_true
     check: gh_api
+    runtime_checkable: true
+    check_hint: "PR-Kommentare mit `created_at` vor dem `agent:review`-Label-Ereignis der Timeline auf einen CI-Beleg (Run-ID, `conclusion success`) prüfen. Der Draft-Status des PRs zum Label-Zeitpunkt ist historisch nicht rekonstruierbar und bleibt als Komponente deklarierte Lücke."
     remedy: "CI-Beleg als **neuen** PR-Kommentar nachreichen (`gh pr comment <n> --body \"CI grün: Run <id>, conclusion success\"`), den PR-Body nicht anfassen; bis dahin `agent:review` zurücknehmen."
     source:
       agents_md: "Der Beleg folgt als PR-Kommentar"
@@ -268,6 +289,9 @@ rules:
         - fact: head_pushed_to_origin
           operator: is_true
     check: git_state
+    # Lokaler Run-End-Zustand: Zum Run-Ende historisch nicht rekonstruierbar — der Worktree
+    # ist längst entfernt, ein nachträglicher Blick sagte nichts über den Zeitpunkt aus.
+    runtime_checkable: false
     remedy: "Ergebnis committen UND pushen (`git push -u origin HEAD`; Specs und Protokolle nach `docs/`); nichts bleibt nur im Worktree und nichts nur im lokalen Branch liegen."
     source:
       agents_md: "D5 — Doku bleibt im Repo"
@@ -279,6 +303,8 @@ rules:
       fact: check_sources_only_github_and_local
       operator: is_true
     check: process_exit
+    # Statische Ebene-2-Prüfung gegen die DSL selbst — im Replay nicht aus der Timeline ableitbar.
+    runtime_checkable: false
     remedy: "Prüfung auf `gh`, `git`, ein Skript aus `scripts/` oder einen CI-Job zurückführen — oder sie streichen. Eigene Dienste gibt es nicht."
     source:
       agents_md: "D6 — Keine eigene Infrastruktur"
@@ -290,6 +316,8 @@ rules:
       fact: worktree_merge_in_progress
       operator: is_false
     check: git_state
+    # Der Zustand `MERGE_HEAD` zum Run-Start hinterlässt kein Timeline-Artefakt — deklarierte Lücke.
+    runtime_checkable: false
     remedy: "Keinen Run starten, nichts committen (ein `git add -A` checkte Konfliktmarker ein): `needs-human` setzen und den Zustand in der Rückfrage an Martin benennen."
     source:
       agents_md: "D8-Basis, Vorgänger #X inzwischen gemergt"
@@ -301,6 +329,9 @@ rules:
       fact: branch_contains_declared_base
       operator: is_true
     check: git_state
+    # Der Worktree zum Anlege-Zeitpunkt ist bei historischen PRs gelöscht — die Basis-Enthaltenheit
+    # lässt sich nachträglich nicht belegen; deklarierte Lücke (Issue #60, Historie).
+    runtime_checkable: false
     remedy: "Worktree von `origin/<pr-branch>` neu anlegen (die Basis steht in den Agent-Hinweisen des Issues); den Vorgänger-Stand nicht nachkopieren — genau daran scheiterte #11."
     source:
       agents_md: "D8 — Abhängige Issues"
@@ -312,6 +343,9 @@ rules:
       fact: dependent_branch_contains_main
       operator: is_true
     check: git_state
+    # Der Branch-Stand zum Sync-Anlass ist bei historischen PRs nicht rekonstruierbar —
+    # deklarierte Lücke.
+    runtime_checkable: false
     remedy: "Sync-Run im selben Worktree delegieren (`git fetch origin`, `git merge origin/main`, `git push -u origin HEAD`); vorher läuft kein Vergleich und keine inhaltliche Nachbesserung."
     source:
       agents_md: "`main` holen"
@@ -332,6 +366,8 @@ rules:
         - fact: local_branch_absent
           operator: is_true
     check: git_state
+    runtime_checkable: true
+    check_hint: "Aus dem Ist-Zustand nach dem Merge ableiten (`git worktree list`, `git branch --list`): verbliebene Worktree-/Branch-Reste = Verstoß. Der Zeitpunkt der Entfernung ist nicht belegbar — ein sauberer Zustand ist ein Bestehen mit Vorbehalt, keine Uhrzeit."
     remedy: "Vom Repo-Root aufräumen, jeden Befehl einzeln: `git checkout main`, `git pull`, `git worktree remove worktrees/<issue-nr>-<slug>`, `git worktree prune`, `git branch -D <präfix>/<issue-nr>-<slug>` — davor `gh pr view <n> --json state,mergedAt` als Merge-Beleg, und im Zuge des Merge-Replys statt als nachgeschobener Run (sonst läuft die Freigabe-Rückfrage in den Timeout)."
     source:
       agents_md: "Lokal aufgeräumt heißt: kein Worktree, kein Branch"

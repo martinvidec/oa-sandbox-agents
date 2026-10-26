@@ -21,7 +21,8 @@
 //          `on`/`check`/`assert`, Abdeckung von D1–D8, Querverweise gegen die fetten
 //          Überschriften von AGENTS.md) und die Pipeline-Konsistenz von pipeline.yaml
 //          (strukturierte pre-/postconditions gegen Rollen, Zustände, Fakten und Regeln).
-// Ebene 3  Runtime-Replay: nicht in diesem MVP (Spec § 5.5).
+// Ebene 3  Runtime-Replay: eigenes Skript scripts/replay-workflow.mjs (Spec § 5.5,
+//          umgesetzt mit Issue #60) — dieses Skript validiert nur seine DSL-Metadaten.
 //
 // Exit-Code: 0 = keine Fehler (Warnungen erlaubt), 1 = Fehler gefunden,
 //            2 = Setup-, Aufruf- oder Laufzeitfehler.
@@ -727,6 +728,15 @@ export function regelKonsistenz(rules, ctx) {
     if (t?.pipeline && !extern.regeln.has(r.id)) {
       add('regel-ohne-pipeline-bezug', `${wo}: hängt am Pipeline-Trigger \`${r.on}\`, wird aber von keinem Schritt in workflow/pipeline.yaml referenziert — dann prüft sie niemand an der Stelle, an der sie greift`, 'warn');
     }
+    // Runtime-Replay-Metadaten (Ebene 3, Issue #60): Die Deklaration ist Pflicht für jede
+    // Regel — Schweigen täuschte Umfang vor, `check_hint` ohne Prüfbarkeit ebenso.
+    if (typeof r.runtime_checkable !== 'boolean') {
+      add('runtime-checkable-fehlt', `${wo}: \`runtime_checkable\` fehlt — jede Regel deklariert explizit, ob der Runtime-Replay (scripts/replay-workflow.mjs) sie maschinell subsumieren kann`);
+    } else if (r.runtime_checkable === true && r.check_hint === undefined) {
+      add('pruefbar-ohne-hint', `${wo}: \`runtime_checkable: true\` ohne \`check_hint\` — eine als prüfbar deklarierte Regel nennt, wie der Replay sie prüft`);
+    } else if (r.runtime_checkable === false && r.check_hint !== undefined) {
+      add('check-hint-ohne-pruefbarkeit', `${wo}: \`check_hint\` gesetzt, aber \`runtime_checkable: false\` — ein Prüfhinweis ohne Prüfung täuscht Umfang vor`);
+    }
   }
   if (regelListe.length === 0) {
     add('selbstvalidierung-nicht-erste', 'rules: keine einzige Regel — `DSL_self_validation` fehlt');
@@ -1230,12 +1240,14 @@ const MINI_REGELN = {
       id: 'DSL_self_validation', on: 'workflow_change',
       assert: { fact: 'dsl_validation_exit_zero', operator: 'is_true' },
       check: 'ci_run', remedy: 'Befunde beheben',
+      runtime_checkable: false,
       source: { doc: 'docs/validate-setup.md — Einsatz in der Pipeline' },
     },
     {
       id: 'D1_merge_by_human', directive: 'D1', on: 'pr_merged',
       assert: { fact: 'pr_merge_actor_role', operator: 'equals', value: 'human' },
       check: 'gh_api', remedy: 'eskalieren',
+      runtime_checkable: true, check_hint: 'Merge-Actor aus dem `merged`-Event prüfen',
       source: { agents_md: 'D1 — Merge nur durch Martin' },
     },
   ],
@@ -1290,7 +1302,7 @@ const REGEL_FAELLE = [
     id: 'Regeln Gegenrichtung: Direktive als Regel statt als Konvention abgedeckt',
     dsl: regelnMit(r => {
       r.documented_conventions = r.documented_conventions.filter(k => k.directive !== 'D5');
-      r.rules.push({ id: 'D5_x', directive: 'D5', on: 'workflow_change', assert: { fact: 'dsl_validation_exit_zero', operator: 'is_true' }, check: 'ci_run', remedy: 'committen', source: { agents_md: 'D5 — Doku bleibt im Repo' } });
+      r.rules.push({ id: 'D5_x', directive: 'D5', on: 'workflow_change', assert: { fact: 'dsl_validation_exit_zero', operator: 'is_true' }, check: 'ci_run', remedy: 'committen', runtime_checkable: false, source: { agents_md: 'D5 — Doku bleibt im Repo' } });
     }),
     codes: [],
   },
@@ -1300,12 +1312,12 @@ const REGEL_FAELLE = [
   // --- D8 vs. Review-Schleife
   {
     id: 'Regeln: D8-Regel am Trigger review_finding',
-    dsl: regelnMit(r => { r.rules.push({ id: 'D8_falsch', directive: 'D8', on: 'review_finding', assert: { fact: 'pr_merge_actor_role', operator: 'is_true' }, check: 'gh_api', remedy: 'x', source: { agents_md: 'D8 — Abhängige Issues' } }); }),
+    dsl: regelnMit(r => { r.rules.push({ id: 'D8_falsch', directive: 'D8', on: 'review_finding', assert: { fact: 'pr_merge_actor_role', operator: 'is_true' }, check: 'gh_api', remedy: 'x', runtime_checkable: false, source: { agents_md: 'D8 — Abhängige Issues' } }); }),
     codes: ['d8-review-schleife', 'regel-ohne-pipeline-bezug'],
   },
   {
     id: 'Regeln Gegenrichtung: Nicht-D8-Regel am Trigger review_finding',
-    dsl: regelnMit(r => { r.rules.push({ id: 'D4_ok', directive: 'D4', on: 'review_finding', assert: { fact: 'pr_merge_actor_role', operator: 'is_true' }, check: 'gh_api', remedy: 'x', source: { agents_md: 'D4 — Akzeptanzkriterien' } }); }),
+    dsl: regelnMit(r => { r.rules.push({ id: 'D4_ok', directive: 'D4', on: 'review_finding', assert: { fact: 'pr_merge_actor_role', operator: 'is_true' }, check: 'gh_api', remedy: 'x', runtime_checkable: false, source: { agents_md: 'D4 — Akzeptanzkriterien' } }); }),
     codes: ['regel-ohne-pipeline-bezug'],
   },
   // --- D6: Infrastruktur der Check-Quellen
@@ -1317,6 +1329,12 @@ const REGEL_FAELLE = [
   { id: 'Regeln: ungenutzte Check-Quelle', dsl: regelnMit(r => { r.check_sources.push({ id: 'git_state', description: 'Repo-Zustand', infrastructure: 'local' }); }), codes: ['check-quelle-ungenutzt'] },
   { id: 'Regeln: Pipeline-Regel ohne Schritt-Bezug', dsl: MINI_REGELN, ctx: { ...MINI_REGEL_CTX, genutztAnderswo: { trigger: new Set(['review_finding']) } }, codes: ['regel-ohne-pipeline-bezug'] },
   { id: 'Regeln: ungenutzter Trigger', dsl: MINI_REGELN, ctx: { ...MINI_REGEL_CTX, genutztAnderswo: { regeln: new Set(['D1_merge_by_human']) } }, codes: ['trigger-ungenutzt'] },
+  // --- Runtime-Replay-Metadaten (Ebene 3, Issue #60): runtime_checkable / check_hint
+  { id: 'Regeln: runtime_checkable fehlt', dsl: regelnMit(r => { delete r.rules[1].runtime_checkable; delete r.rules[1].check_hint; }), codes: ['runtime-checkable-fehlt'] },
+  { id: 'Regeln: runtime_checkable true ohne check_hint', dsl: regelnMit(r => { delete r.rules[1].check_hint; }), codes: ['pruefbar-ohne-hint'] },
+  { id: 'Regeln: check_hint bei runtime_checkable false', dsl: regelnMit(r => { r.rules[1].runtime_checkable = false; }), codes: ['check-hint-ohne-pruefbarkeit'] },
+  { id: 'Regeln Gegenrichtung: prüfbar mit check_hint schweigt', dsl: regelnMit(r => { r.rules[1].check_hint = 'Merge-Actor prüfen'; }), codes: [] },
+  { id: 'Regeln Gegenrichtung: nicht prüfbar ohne check_hint schweigt', dsl: regelnMit(r => { r.rules[1].runtime_checkable = false; delete r.rules[1].check_hint; }), codes: [] },
 ];
 
 const MINI_PIPELINE_CTX = {
@@ -1797,6 +1815,9 @@ const rulesSchema = {
         properties: {
           id: regelId, directive: direktive, on: nichtLeer, assert: assertSchema,
           check: nichtLeer, remedy: nichtLeer, source: quelleSchema,
+          // Runtime-Replay-Metadaten (Ebene 3): Jede Regel deklariert, ob der Replay sie
+          // aus den beobachtbaren Daten subsumieren kann; `check_hint` sagt, wie.
+          runtime_checkable: { type: 'boolean' }, check_hint: nichtLeer,
         },
       },
     },
