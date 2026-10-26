@@ -1,10 +1,15 @@
-// Validierung der Workflow-DSL unter workflow/ (Spec: docs/specs/dsl-workflow.md, § 3).
+// Validierung der Workflow-DSL (Spec: docs/specs/dsl-workflow.md, § 3).
 // Setup und Aufruf: docs/validate-setup.md
 //
 //   node scripts/validate-workflow.mjs [--root <verzeichnis>] [--json] [--selftest]
 //
-// Ebene 1  Schema: roles.yaml, states.yaml, rules.yaml und pipeline.yaml gegen JSON-Schemata
-//          (ajv), Referenzauflösung.
+// Registry: workflow/registry.yaml benennt die DSL-Instanzen (`workflow/<id>/` mit den vier
+// Dateien roles.yaml, states.yaml, rules.yaml, pipeline.yaml); geladen wird ausschließlich die
+// Instanz mit `active: true`. Invarianten: IDs slug-förmig und eindeutig, genau ein aktiver
+// Eintrag, jede Instanz vollständig (Funktion `registryInvarianten`).
+//
+// Ebene 1  Schema: registry.yaml sowie roles.yaml, states.yaml, rules.yaml und pipeline.yaml
+//          der aktiven Instanz gegen JSON-Schemata (ajv), Referenzauflösung.
 // Ebene 2  Konsistenz: Wildcard-Sicherheitsanalyse der Tool-Allowlists (Argument-Wildcard ok;
 //          Wert-Wildcard, Injektionsformen wie -C/-c/--git-dir=…, Verkettungs- und
 //          Umlenkungszeichen, Variablen-Expansion, nicht-terminale Wildcards und blanke
@@ -24,6 +29,7 @@ import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { workflowFragmente, aktiverBlock, pruefeGenerierte } from './render-workflow-lib.mjs';
 
 const args = process.argv.slice(2);
 let root = process.cwd();
@@ -273,7 +279,8 @@ export function verbotsbefunde(entry, liste) {
 
 // ------------------------------------ Ebene 2c: D2-Prosa von AGENTS.md gegen die Tool-Sets
 //
-// render-agents.mjs vergleicht nur die beiden Marker-Bereiche (Rollen- und Label-Tabelle). Die
+// render-workflow.mjs vergleicht nur die generierten Fragmente (WORKFLOW.md und der aktiv-Block
+// von AGENTS.md). Die
 // Tool-Sets stehen in der Begründungsprosa von D2 und bleiben Handtext (Spec § 6) — ohne
 // Abgleich können Prosa und DSL auseinanderlaufen, ohne dass CI es merkt (M6 aus PR #45).
 
@@ -1314,6 +1321,44 @@ const PIPELINE_FAELLE = [
   { id: 'Pipeline: Schleifenübergang nicht als loop markiert', dsl: pipelineMit(p => { p.steps[0].loop = { ...klon(MINI_SCHLEIFE), transition: 'merge' }; }), codes: ['schleife-nicht-markiert'] },
 ];
 
+// Fälle für die Registry-Invarianten. `dateiExistiert` wird eingespießt: Die vollständigen
+// Instanzen gelten als vorhanden, außer der Fall nennt einen `fehlt`-Pfad.
+const registryMit = fn => { const r = klon(MINI_REGISTRY); fn(r); return r; };
+const MINI_REGISTRY = {
+  version: 1, source: 'Miniatur-Registry',
+  workflows: [
+    { id: 'claude-pipeline', description: 'Claude-Code-Pipeline', active: true },
+  ],
+};
+const REGISTRY_FAELLE = [
+  { id: 'Registry: Miniatur ohne Befund', dsl: MINI_REGISTRY, codes: [] },
+  { id: 'Registry: kein aktiver Eintrag', dsl: registryMit(r => { r.workflows[0].active = false; }), codes: ['registry-kein-aktiv'] },
+  { id: 'Registry: zwei aktive Einträge', dsl: registryMit(r => { r.workflows.push({ id: 'hermes-pipeline', description: 'x', active: true }); }), codes: ['registry-mehrfach-aktiv'] },
+  { id: 'Registry: ID nicht slug-förmig', dsl: registryMit(r => { r.workflows[0].id = 'Claude_Pipeline'; }), codes: ['registry-id-form'] },
+  { id: 'Registry: doppelte ID', dsl: registryMit(r => { r.workflows.push({ id: 'claude-pipeline', description: 'x', active: false }); }), codes: ['registry-id-doppelt'] },
+  { id: 'Registry: Instanz unvollständig', dsl: MINI_REGISTRY, ctx: { dateiExistiert: p => p !== 'workflow/claude-pipeline/rules.yaml' }, codes: ['registry-instanz-unvollstaendig'] },
+  { id: 'Registry Gegenrichtung: slug mit Bindestrich und vollständige Instanz schweigt', dsl: registryMit(r => { r.workflows[0].id = 'claude-pipeline-2'; }), ctx: { dateiExistiert: p => p.startsWith('workflow/claude-pipeline-2/') }, codes: [] },
+];
+
+// Fälle für den Generierungs-Vergleich (WORKFLOW.md-Fragmente und AGENTS.md-aktiv-Block). Der
+// Vergleich selbst steht in render-workflow-lib.mjs; geprüft wird hier die Hülle des Validators:
+// Codes, Zählung über mehrere Fragmente und die Gegenrichtung (deckungsgleich schweigt).
+const MINI_FRAGMENT = { id: 'mini-tabelle', titel: 'Mini-Tabelle', quelle: 'mini.yaml', text: '| A | B |\n|---|---|\n| 1 | 2 |' };
+const mdMit = (id, text) => `Kopfzeile\n\n<!-- dsl:${id}:start -->\n${text}\n<!-- dsl:${id}:end -->\n`;
+const GENERIERUNG_FAELLE = [
+  { id: 'Generierung: deckungsgleich schweigt', dsl: mdMit('mini-tabelle', MINI_FRAGMENT.text), frag: [MINI_FRAGMENT], codes: [] },
+  { id: 'Generierung: abweichender Inhalt', dsl: mdMit('mini-tabelle', '| A | B |\n|---|---|\n| 1 | 3 |'), frag: [MINI_FRAGMENT], codes: ['generiert-abweichend'] },
+  { id: 'Generierung: Marker fehlen', dsl: 'Kopfzeile ohne Marker', frag: [MINI_FRAGMENT], codes: ['generiert-marker-fehlen'] },
+  { id: 'Generierung: Datei fehlt', dsl: null, frag: [MINI_FRAGMENT], codes: ['generiert-fehlt'] },
+  { id: 'Generierung: Whitespace-Toleranz zwischen den Zellen', dsl: mdMit('mini-tabelle', '| A  | B |\n| --- | --- |\n| 1   | 2 |'), frag: [MINI_FRAGMENT], codes: [] },
+  // Gegenrichtung: Nur der Marker-Bereich zählt — Handtext außerhalb ändert nichts am Vergleich.
+  { id: 'Generierung Gegenrichtung: Handtext außerhalb der Marker zählt nicht', dsl: `${mdMit('mini-tabelle', MINI_FRAGMENT.text)}Nachwort, das nur in der Datei steht\n`, frag: [MINI_FRAGMENT], codes: [] },
+  { id: 'Generierung: Zellinhalt mit anderem Text weicht ab', dsl: mdMit('mini-tabelle', '| A | B |\n|---|---|\n| 1x | 2 |'), frag: [MINI_FRAGMENT], codes: ['generiert-abweichend'] },
+  // Ein aktiv-Block ist dasselbe Verfahren mit einem anderen Fragment — der Fall verankert den
+  // AGENTS.md-Check als eigenen (dort steht genau dieses Fragment zwischen den Markern).
+  { id: 'Generierung: aktiv-Block weicht ab', dsl: mdMit('active-workflow', 'Aktiver Workflow: `anderes` → Details in [WORKFLOW.md](WORKFLOW.md)'), frag: [{ ...MINI_FRAGMENT, id: 'active-workflow', text: 'Aktiver Workflow: `claude-pipeline` → Details in [WORKFLOW.md](WORKFLOW.md)' }], codes: ['generiert-abweichend'] },
+];
+
 // `verbotsformen` kommt aus roles.yaml (R2). Ohne die Datei — `--selftest` ohne Setup — laufen
 // die übrigen Fälle weiter und die Subsumptionsfälle werden als übersprungen ausgewiesen.
 function runSelftest(verbotsformen) {
@@ -1361,6 +1406,19 @@ function runSelftest(verbotsformen) {
       const ok = codes.length === erwartet.length && erwartet.every((c, i) => c === codes[i]);
       fall(f.id, f.id, erwartet.join(', ') || 'kein Befund', codes, ok, code);
     }
+  }
+  // Registry-Invarianten und Generierungs-Vergleich — dieselbe vollständige Befundliste je Fall.
+  for (const f of REGISTRY_FAELLE) {
+    const erwartet = [...f.codes].sort();
+    const codes = registryInvarianten(f.dsl, f.ctx?.dateiExistiert).befunde.map(b => b.code).sort();
+    const ok = codes.length === erwartet.length && erwartet.every((c, i) => c === codes[i]);
+    fall(f.id, f.id, erwartet.join(', ') || 'kein Befund', codes, ok, 'registry-fall-nicht-gefangen');
+  }
+  for (const f of GENERIERUNG_FAELLE) {
+    const erwartet = [...f.codes].sort();
+    const codes = pruefeGenerierteDatei(f.dsl, f.frag).map(b => b.code).sort();
+    const ok = codes.length === erwartet.length && erwartet.every((c, i) => c === codes[i]);
+    fall(f.id, f.id, erwartet.join(', ') || 'kein Befund', codes, ok, 'generierung-fall-nicht-gefangen');
   }
   return ergebnis;
 }
@@ -1674,6 +1732,86 @@ const pipelineSchema = {
   },
 };
 
+// ------------------------------------------------------ Registry (workflow/registry.yaml)
+
+// Schema: locker in den Freitextfeldern (description, source), hart bei `id` (slug-förmig) und
+// `active` (Boolean — die Aktiv-Auswahl muss eindeutig lesbar sein, kein Wahrheits-Wildwuchs).
+const registrySchema = {
+  type: 'object', additionalProperties: false,
+  required: ['version', 'source', 'workflows'],
+  properties: {
+    version: { const: 1 },
+    source: nichtLeer,
+    workflows: {
+      type: 'array', minItems: 1,
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['id', 'description', 'active'],
+        properties: {
+          id: { type: 'string', pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$' },
+          description: nichtLeer,
+          active: { type: 'boolean' },
+        },
+      },
+    },
+  },
+};
+
+// Die vier Dateien, aus denen eine Instanz besteht — für `registry-instanz-unvollstaendig`.
+const INSTANZ_DATEIEN = ['roles.yaml', 'states.yaml', 'rules.yaml', 'pipeline.yaml'];
+
+// Registry-Invarianten über das Schema hinaus (Schemaverstöße meldet ajv separat):
+//   registry-id-doppelt               — eine ID zweimal vergeben
+//   registry-kein-aktiv               — kein Eintrag mit `active: true`
+//   registry-mehrfach-aktiv           — mehr als ein aktiver Eintrag
+//   registry-instanz-unvollstaendig   — ein Eintrag ohne alle vier DSL-Dateien
+// `dateiExistiert` bekommt den Pfad relativ zum Root (`workflow/<id>/roles.yaml`) — der
+// Selbsttest spießt dort eine Miniatur-Existenzfunktion ein statt echter Dateien.
+export function registryInvarianten(registry, dateiExistiert = () => true) {
+  const befunde = [];
+  const add = (code, message) => befunde.push({ code, message });
+  const eintraege = registry?.workflows ?? [];
+  const ids = new Set();
+  for (const w of eintraege) {
+    if (!/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(w.id)) {
+      add('registry-id-form', `registry.yaml: Workflow-ID \`${w.id}\` ist nicht slug-förmig (erwartet ^[a-z][a-z0-9]*(-[a-z0-9]+)*$)`);
+    }
+    if (ids.has(w.id)) add('registry-id-doppelt', `registry.yaml: Workflow-ID \`${w.id}\` doppelt vergeben`);
+    ids.add(w.id);
+  }
+  const aktiv = eintraege.filter(w => w.active);
+  if (aktiv.length === 0) add('registry-kein-aktiv', 'registry.yaml: kein Eintrag mit `active: true` — der Loader hat keine Instanz zu laden');
+  if (aktiv.length > 1) add('registry-mehrfach-aktiv', `registry.yaml: ${aktiv.length} Einträge mit \`active: true\` (${aktiv.map(w => w.id).join(', ')}) — genau einer ist Pflicht`);
+  for (const w of eintraege) {
+    for (const datei of INSTANZ_DATEIEN) {
+      const rel = `workflow/${w.id}/${datei}`;
+      if (!dateiExistiert(rel)) {
+        add('registry-instanz-unvollstaendig', `registry.yaml/\`${w.id}\`: \`${rel}\` fehlt — eine Instanz trägt alle vier DSL-Dateien (${INSTANZ_DATEIEN.join(', ')})`);
+      }
+    }
+  }
+  return { befunde, eintraege: eintraege.length, aktivId: aktiv.length === 1 ? aktiv[0].id : null };
+}
+
+// ---------------------------------------------------- Generierte Markdown-Fragmente (Checks)
+
+// Der Generierungs-Vergleich läuft über `pruefeGenerierte` aus render-workflow-lib.mjs — dasselbe
+// Verfahren wie der `--check` von render-workflow.mjs (Whitespace-Toleranz: Zellen getrimmt,
+// Trennzeile normalisiert; der Zelltext muss zeichengenau übereinstimmen). Diese Hülle hebt die
+// Befunde auf Codes für den Validator: Datei fehlt bzw. kein Markdown = `generiert-fehlt`,
+// Marker fehlen = `generiert-marker-fehlen`, Inhalt weicht ab = `generiert-abweichend`.
+export function pruefeGenerierteDatei(text, fragmente) {
+  if (typeof text !== 'string') return [{ code: 'generiert-fehlt', message: 'Datei fehlt oder ist kein Text' }];
+  const befunde = [];
+  for (const b of pruefeGenerierte(text, fragmente)) {
+    befunde.push({
+      code: b.message.includes('Marker') ? 'generiert-marker-fehlen' : 'generiert-abweichend',
+      message: `${b.titel} ${b.message}`,
+    });
+  }
+  return befunde;
+}
+
 // --------------------------------------------------------------------------------- Ablauf
 
 function ladeYaml(datei) {
@@ -1701,10 +1839,16 @@ function pruefeSchema(ajv, schema, daten, datei) {
 // der Selbsttest ohne den Subsumptionsteil und weist die Fälle als übersprungen aus.
 function verbotsformenFuerSelbsttest() {
   const yamlMod = resolveModule('js-yaml');
-  const p = path.join(root, 'workflow/roles.yaml');
-  if (!yamlMod || !fs.existsSync(p)) return null;
+  const registryPfad = path.join(root, 'workflow/registry.yaml');
+  if (!yamlMod || !fs.existsSync(registryPfad)) return null;
   try {
-    return ((yamlMod.default ?? yamlMod).load(fs.readFileSync(p, 'utf8')) ?? {}).forbidden_tools ?? null;
+    const YAML = (yamlMod.default ?? yamlMod);
+    const registry = YAML.load(fs.readFileSync(registryPfad, 'utf8')) ?? {};
+    const aktiv = (registry.workflows ?? []).filter(w => w.active);
+    if (aktiv.length !== 1) return null;
+    const p = path.join(root, `workflow/${aktiv[0].id}/roles.yaml`);
+    if (!fs.existsSync(p)) return null;
+    return (YAML.load(fs.readFileSync(p, 'utf8')) ?? {}).forbidden_tools ?? null;
   } catch {
     return null;
   }
@@ -1713,13 +1857,13 @@ function verbotsformenFuerSelbsttest() {
 if (selftestOnly) {
   const verbotsformen = verbotsformenFuerSelbsttest();
   if (!verbotsformen) {
-    warn('selftest', 'verbotsliste-nicht-geladen', 'workflow/roles.yaml nicht lesbar (js-yaml nicht auflösbar, Datei fehlt oder kaputt) — die Subsumptionsfälle wurden übersprungen; Setup siehe docs/validate-setup.md');
+    warn('selftest', 'verbotsliste-nicht-geladen', 'registry.yaml bzw. roles.yaml der aktiven Instanz nicht lesbar (js-yaml nicht auflösbar, Datei fehlt oder kaputt) — die Subsumptionsfälle wurden übersprungen; Setup siehe docs/validate-setup.md');
   }
   const selftest = runSelftest(verbotsformen);
   const ok = errors.length === 0;
   if (jsonOut) console.log(JSON.stringify({ ok, selftest, errors, warnings }, null, 2));
   else {
-    console.log('Selbsttest: Sicherheitsanalyse, Subsumption, D2-Prosa-Abgleich, Regel- und Pipeline-Konsistenz');
+    console.log('Selbsttest: Sicherheitsanalyse, Subsumption, D2-Prosa-Abgleich, Regel- und Pipeline-Konsistenz, Registry-Invarianten, Generierungs-Vergleich');
     for (const s of selftest) console.log(`  ${s.uebersprungen ? 'übsp' : s.ok ? 'ok  ' : 'FEHL'} ${s.entry.replace(/\n/g, '\\n')} → erwartet: ${s.erwartet}, gefunden: ${s.gefunden.join(', ') || '—'}`);
     for (const w of warnings) console.log(`  Warnung: ${w.message}`);
     if (!ok) for (const e of errors) console.log(`  Fehler: ${e.message}`);
@@ -1729,23 +1873,67 @@ if (selftestOnly) {
 
 const { YAML, Ajv } = ladeModule();
 const ajv = new Ajv({ allErrors: true, strict: false });
-const roles = ladeYaml('workflow/roles.yaml');
-const states = ladeYaml('workflow/states.yaml');
-const rules = ladeYaml('workflow/rules.yaml');
-const pipeline = ladeYaml('workflow/pipeline.yaml');
-const rolesOk = pruefeSchema(ajv, rolesSchema, roles, 'workflow/roles.yaml');
-const statesOk = pruefeSchema(ajv, statesSchema, states, 'workflow/states.yaml');
-const regelnOk = pruefeSchema(ajv, rulesSchema, rules, 'workflow/rules.yaml');
-const pipelineOk = pruefeSchema(ajv, pipelineSchema, pipeline, 'workflow/pipeline.yaml');
+// Registry: Schemaprüfung, dann Invarianten. Erst wenn genau ein aktiver Eintrag übrig bleibt,
+// wird die Instanz geladen — ein Registry-Fehler ist der erste Befund, alle Folgeprüfungen
+// entfallen (statt Dutzender Folgefehler über fehlende Pfade).
+const registryOk = pruefeSchema(ajv, registrySchema, ladeYaml('workflow/registry.yaml'), 'workflow/registry.yaml');
+const registry = registryOk ? ladeYaml('workflow/registry.yaml') : null;
+const registryErgebnis = registryOk
+  ? registryInvarianten(registry, rel => fs.existsSync(path.join(root, rel)))
+  : { befunde: [], eintraege: 0, aktivId: null };
+for (const b of registryErgebnis.befunde) err('workflow/registry.yaml', b.code, b.message);
+const instanzOk = registryOk && registryErgebnis.aktivId !== null && errors.length === 0;
+
+// Die vier DSL-Dateien der aktiven Instanz — Pfade immer mit der Instanz-ID, nie mit einem
+// festen Workflow-Namen (Mehrere Workflows können dieselben Dateinamen tragen).
+const instanzId = registryErgebnis.aktivId;
+const P = {
+  roles: `workflow/${instanzId}/roles.yaml`,
+  states: `workflow/${instanzId}/states.yaml`,
+  rules: `workflow/${instanzId}/rules.yaml`,
+  pipeline: `workflow/${instanzId}/pipeline.yaml`,
+};
+
+const roles = instanzOk ? ladeYaml(P.roles) : null;
+const states = instanzOk ? ladeYaml(P.states) : null;
+const rules = instanzOk ? ladeYaml(P.rules) : null;
+const pipeline = instanzOk ? ladeYaml(P.pipeline) : null;
+const rolesOk = instanzOk && pruefeSchema(ajv, rolesSchema, roles, P.roles);
+const statesOk = instanzOk && pruefeSchema(ajv, statesSchema, states, P.states);
+const regelnOk = instanzOk && pruefeSchema(ajv, rulesSchema, rules, P.rules);
+const pipelineOk = instanzOk && pruefeSchema(ajv, pipelineSchema, pipeline, P.pipeline);
 // Erst nach der Schemaprüfung: Eine kaputte `forbidden_tools`-Liste würde im Selbsttest
 // Folgefehler erzeugen, die vom eigentlichen Schema-Befund ablenken.
-if (!rolesOk) warn('selftest', 'verbotsliste-nicht-geladen', 'workflow/roles.yaml erfüllt das Schema nicht — die Subsumptionsfälle des Selbsttests wurden übersprungen');
+if (!rolesOk) warn('selftest', 'verbotsliste-nicht-geladen', 'roles.yaml der aktiven Instanz erfüllt das Schema nicht (oder die Registry ist kaputt) — die Subsumptionsfälle des Selbsttests wurden übersprungen');
 const selftest = runSelftest(rolesOk ? roles.forbidden_tools : null);
+
+// Generierte Markdown-Fragmente: WORKFLOW.md (fünf Fragmente aus der DSL) und der aktiv-Block
+// von AGENTS.md. Geprüft wird mit demselben Vergleich, den render-workflow.mjs --check nutzt —
+// der Validator könnte sonst an der generierten Datei vorbeiprüfen, wenn sich die Lib ändert.
+let generiert = { fragmente: [], aktiv: null };
+if (rolesOk && statesOk && regelnOk && pipelineOk) {
+  generiert = {
+    fragmente: workflowFragmente({ roles, states, rules, pipeline }),
+    aktiv: { id: 'active-workflow', titel: 'Aktiv-Block', quelle: 'registry.yaml', text: aktiverBlock(registry) },
+  };
+  for (const b of pruefeGenerierteDatei(
+    fs.existsSync(path.join(root, 'WORKFLOW.md')) ? fs.readFileSync(path.join(root, 'WORKFLOW.md'), 'utf8') : null,
+    generiert.fragmente,
+  )) {
+    err('WORKFLOW.md', b.code, b.message);
+  }
+  for (const b of pruefeGenerierteDatei(
+    fs.existsSync(path.join(root, 'AGENTS.md')) ? fs.readFileSync(path.join(root, 'AGENTS.md'), 'utf8') : null,
+    [generiert.aktiv],
+  )) {
+    err('AGENTS.md', b.code, b.message);
+  }
+}
 
 let toolEintraege = 0;
 let prosaFormen = 0;
 if (rolesOk) {
-  const R = 'workflow/roles.yaml';
+  const R = P.roles;
   const ids = new Set();
 
   // Die Verbotsliste selbst: keine Dubletten, und jede `except`-Form muss wirklich unter ihr
@@ -1858,7 +2046,7 @@ if (rolesOk) {
 }
 
 if (statesOk) {
-  const S = 'workflow/states.yaml';
+  const S = P.states;
   const stateById = new Map();
   for (const s of states.states) {
     if (stateById.has(s.id)) err(S, 'doppelte-id', `Zustands-ID \`${s.id}\` doppelt vergeben`);
@@ -2019,12 +2207,12 @@ const pipelineErgebnis = pipelineOk
 if (pipelineErgebnis) {
   pipelineSchritte = pipelineErgebnis.geprueft;
   for (const b of pipelineErgebnis.befunde) {
-    (b.level === 'warn' ? warn : err)('workflow/pipeline.yaml', b.code, b.message);
+    (b.level === 'warn' ? warn : err)(P.pipeline, b.code, b.message);
   }
 }
 
 if (regelnOk) {
-  const R = 'workflow/rules.yaml';
+  const R = P.rules;
   // Die Querverweise werden gegen dieselbe Datei aufgelöst, die schon den D2-Prosa-Abgleich
   // trägt (`d2_prose_check.file`, Default AGENTS.md) — eine zweite Angabe liefe auseinander.
   const prosaDatei = (rolesOk ? roles.d2_prose_check.file : null) ?? 'AGENTS.md';
@@ -2053,7 +2241,9 @@ const ok = errors.length === 0;
 const report = {
   ok,
   root,
+  instanz: instanzId,
   geprueft: {
+    registry_eintraege: registryErgebnis.eintraege,
     rollen: rolesOk ? roles.roles.length : 0,
     tool_eintraege: toolEintraege,
     d2_prosa_formen: prosaFormen,
@@ -2061,6 +2251,7 @@ const report = {
     uebergaenge: statesOk ? states.transitions.length : 0,
     regeln: regelEintraege,
     pipeline_schritte: pipelineSchritte,
+    generierte_fragmente: (generiert.fragmente.length ? generiert.fragmente.length : 0) + (generiert.aktiv ? 1 : 0),
   },
   selftest,
   errors,
@@ -2072,11 +2263,13 @@ if (jsonOut) {
 } else {
   console.log('Workflow-DSL-Validierung');
   console.log(`  Selbsttest der Analysen: ${selftest.filter(s => s.ok).length}/${selftest.length} Fälle wie erwartet`);
-  console.log(`  workflow/roles.yaml:  ${report.geprueft.rollen} Rollen, ${report.geprueft.tool_eintraege} Tool-Einträge`);
+  console.log(`  workflow/registry.yaml: ${report.geprueft.registry_eintraege} Workflows, aktiv: \`${instanzId ?? '—'}\``);
+  console.log(`  ${P.roles}:  ${report.geprueft.rollen} Rollen, ${report.geprueft.tool_eintraege} Tool-Einträge`);
   console.log(`  ${rolesOk ? roles.d2_prose_check.file : 'AGENTS.md'} ↔ roles.yaml: ${report.geprueft.d2_prosa_formen} D2-Formen abgeglichen`);
-  console.log(`  workflow/states.yaml: ${report.geprueft.zustaende} Zustände, ${report.geprueft.uebergaenge} Übergänge`);
-  console.log(`  workflow/rules.yaml:  ${report.geprueft.regeln} Regeln und dokumentierte Konventionen`);
-  console.log(`  workflow/pipeline.yaml: ${report.geprueft.pipeline_schritte} Schritte`);
+  console.log(`  ${P.states}: ${report.geprueft.zustaende} Zustände, ${report.geprueft.uebergaenge} Übergänge`);
+  console.log(`  ${P.rules}:  ${report.geprueft.regeln} Regeln und dokumentierte Konventionen`);
+  console.log(`  ${P.pipeline}: ${report.geprueft.pipeline_schritte} Schritte`);
+  console.log(`  WORKFLOW.md + AGENTS.md (aktiv-Block): ${report.geprueft.generierte_fragmente} generierte Fragmente geprüft`);
   if (warnings.length) {
     console.log(`\nWarnungen (${warnings.length}):`);
     for (const w of warnings) console.log(`  [${w.code}] ${w.where}: ${w.message}`);

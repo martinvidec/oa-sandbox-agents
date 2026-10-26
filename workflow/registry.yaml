@@ -1,0 +1,20 @@
+# Registry der Workflow-DSL-Instanzen. Jeder Eintrag benennt einen Workflow unter
+# `workflow/<id>/` (die vier Dateien roles.yaml, states.yaml, rules.yaml, pipeline.yaml) mit
+# einer Beschreibung und dem Aktiv-Flag. Genau EIN Eintrag trägt `active: true` — der Loader
+# von scripts/validate-workflow.mjs und scripts/render-workflow.mjs lädt ausschließlich diese
+# Instanz; WORKFLOW.md und der aktiv-Block in AGENTS.md werden aus ihr generiert.
+#
+# Geprüft von scripts/validate-workflow.mjs (Schema + Registry-Invarianten):
+#   - IDs sind slug-förmig (`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`) und eindeutig
+#   - genau ein `active: true`
+#   - jede Instanz hat alle vier DSL-Dateien
+#
+# Workflow B (`hermes-pipeline`) kommt mit eigenem Issue — er wird hier eingetragen, wenn
+# seine Instanz existiert, nicht vorher (die Invariante verlangt vollständige Instanzen).
+version: 1
+source: "AGENTS.md — aktiver Workflow; research/multi-workflow-dsl"
+
+workflows:
+  - id: claude-pipeline
+    description: "Claude-Code-Pipeline: Lead delegiert Coder-, Reviewer- und Sync-Runs als headless Claude-Code-Runs in eigenen Worktrees."
+    active: true
