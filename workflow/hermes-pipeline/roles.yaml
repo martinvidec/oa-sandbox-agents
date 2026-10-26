@@ -96,8 +96,9 @@ d2_prose_check:
   # Reviewer-Set-Punkt in AGENTS.md beschreiben die Claude-Code-Sets der claude-pipeline. Diese
   # Instanz realisiert beide Rollen als Hermes-Sub-Agenten (`hermes_coder`/`hermes_reviewer`,
   # bewusst andere IDs und Namen, damit `passtZuRolle` sie nicht den Claude-Set-Punkten zuordnet).
-  # Die Deklaration ist maschinell geprüft: Ein deklarierter Block, der doch einer Rolle dieser
-  # Instanz entspricht, ist ein Fehler (`fremdblock-ohne-bezug`); ein Set-Punkt ohne Rolle und
+  # Die Deklaration ist maschinell geprüft: Ein deklarierter Block, dessen Label doch einer Rolle
+  # dieser Instanz entspricht, ist ein Fehler (`fremdblock-kollidiert`); eine Deklaration ohne
+  # passenden Set-Punkt in AGENTS.md ist ein Fehler (`fremdblock-ohne-bezug`); ein Set-Punkt ohne Rolle und
   # ohne Deklaration läuft weiter als Begründungsprosa und verlangt Belege.
   foreign_set_blocks:
     - label: "Coder"

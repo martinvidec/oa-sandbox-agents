@@ -244,7 +244,7 @@ flowchart TB
         direction TB
         E1["<b>Ebene 1 — Schema</b> (ajv)<br/><small>registry.yaml + 4 Instanz-Dateien<br/>· Referenzauflösung</small>"]:::script
         E2["<b>Ebene 2 — Konsistenz-Linter</b><br/><small>2a Wildcard-Sicherheit · 2b Zustandsmaschine<br/>2c D2-Prosa ↔ roles.yaml · 2d Regeln · 2e Pipeline</small>"]:::script
-        ST["<b>Selbsttest</b><br/><small>155 Fälle · läuft bei jedem Lauf mit<br/>Melder + Gegenrichtung</small>"]:::script
+        ST["<b>Selbsttest</b><br/><small>&gt;150 Fälle, beim Ausbau wachsend · läuft bei jedem Lauf mit<br/>Melder + Gegenrichtung</small>"]:::script
     end
 
     subgraph DSL3["📄 Generierung — render-workflow.mjs"]
