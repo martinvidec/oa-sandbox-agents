@@ -38,13 +38,13 @@
 | `hand_to_review` | `in_progress` → `review` | `coder` (Fallback: `lead`) | Draft-PR offen UND CI grün als PR-Kommentar belegt | `draft_pr_open`, `ci_green` | `D4` |
 | `review_finding_fix` | `review` → `in_progress` | `lead` | Review-Befunde: Lead delegiert den Fix-Run im selben Worktree/Branch (Coder) | — | docs/workflow.md — Review-Schleife, Schritt 4 |
 | `merge` | `review` → `done` | `human` | Martin merged den PR bei grünem CI | `merged`, `ci_green` | `D1` |
-| `escalate_ready` | `ready` → `needs_human` | `any_agent` | Briefing unklar, Rückfrage an Martin nötig | — | AGENTS.md — Arbeitsaufträge, Label-Tabelle: `needs-human` setzt jeder Agent, der nicht weiterkommt |
+| `escalate_ready` | `ready` → `needs_human` | `any_agent` | Briefing unklar, Rückfrage an Martin nötig | — | AGENTS.md — Arbeitsaufträge (Pipeline): Labels mit genau einem Owner je Übergang; Semantik definiert in dieser Datei (label_state.ausloeser) |
 | `escalate_in_progress` | `in_progress` → `needs_human` | `any_agent` | Run bricht ab (Fix-Run, Sync-Run mitten im Merge) oder kommt nicht weiter | — | `D7` |
 | `escalate_review` | `review` → `needs_human` | `any_agent` | Mehr als `max_review_loops` Schleifen oder Reviewer kommt nicht weiter | — | docs/workflow.md — Review-Schleife, Schritt 5: maximal zwei Schleifen, danach `needs-human` |
-| `block_in_progress` | `in_progress` → `blocked` | `any_agent` | Externe Blockade während des Runs | — | AGENTS.md — Arbeitsaufträge, Label-Tabelle: `blocked` bei externer Blockade |
-| `block_review` | `review` → `blocked` | `any_agent` | Externe Blockade während der Review-Schleife | — | AGENTS.md — Arbeitsaufträge, Label-Tabelle: `blocked` bei externer Blockade |
+| `block_in_progress` | `in_progress` → `blocked` | `any_agent` | Externe Blockade während des Runs | — | AGENTS.md — Arbeitsaufträge (Pipeline): Labels mit genau einem Owner je Übergang; Semantik definiert in dieser Datei (label_state.ausloeser) |
+| `block_review` | `review` → `blocked` | `any_agent` | Externe Blockade während der Review-Schleife | — | AGENTS.md — Arbeitsaufträge (Pipeline): Labels mit genau einem Owner je Übergang; Semantik definiert in dieser Datei (label_state.ausloeser) |
 | `resume_after_human` | `needs_human` → `in_progress` | `lead` | Martin hat entschieden; der Lead delegiert den nächsten Run | `human_decision` | `D7` |
-| `resume_after_block` | `blocked` → `in_progress` | `lead` | Blockade aufgelöst; der Lead delegiert den nächsten Run | `blocker_resolved` | AGENTS.md — Arbeitsaufträge, Label-Tabelle: `blocked` gilt bis zur Auflösung der externen Blockade |
+| `resume_after_block` | `blocked` → `in_progress` | `lead` | Blockade aufgelöst; der Lead delegiert den nächsten Run | `blocker_resolved` | AGENTS.md — Arbeitsaufträge (Pipeline): Labels mit genau einem Owner je Übergang; Semantik definiert in dieser Datei (label_state.ausloeser) |
 
 Invarianten:
 

@@ -1,6 +1,6 @@
 # Spec: Workflow-DSL — maschinell prüfbarer Multi-Agent-Workflow
 
-Status: Entwurf v0.1 (2026-09-26) · Quelle: Diskussion im Repo-Thread · Umsetzung: Issues dieser Serie
+Status: v0.2 (2026-10-26, Multi-Workflow: Registry workflow/registry.yaml, Namensraum workflow/<id>/, generiertes WORKFLOW.md via render-workflow.mjs — render-agents.mjs entfällt; Basis v0.1 (2026-09-26) · Quelle: Diskussion im Repo-Thread · Umsetzung: Issues dieser Serie
 
 ## 1. Ziel
 
@@ -61,8 +61,8 @@ Der Lead ist Ausführer der DSL, nicht Interpret der Prosa.
    der Allowlists, Zustandsmaschinen-Checks). Node, keine schweren Abhängigkeiten
    (ajv + js-yaml reichen). Playwright analog: NODE_PATH-Konvention, kein Install
    im Repo (D2-Punkt „Warum Playwright nicht im Repo-Root installiert wird").
-3. Hybrid-Anbindung: AGENTS.md-Rollentabelle + Label-Tabelle generieren
-   (scripts/render-agents.mjs), CI-Check generiert-vs-eingecheckt; Begründungsprosa
+3. Hybrid-Anbindung: WORKFLOW.md (Rollen-/Label-/Regel-/Pipeline-Tabellen) + AGENTS.md-Aktiv-Block generieren
+   (scripts/render-workflow.mjs), CI-Check generiert-vs-eingecheckt; Begründungsprosa
    bleibt Handtext.
 4. CI erweitert: validate-workflow im ci.yml-Workflow.
 5. Runtime-Replay (Ebene 3) NICHT in diesem MVP — eigenes Folge-Issue (braucht

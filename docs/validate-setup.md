@@ -282,7 +282,7 @@ so teuer wie ein Durchrutscher, deshalb vergleicht jeder Fall die **vollständig
 ein zusätzlicher Fehlalarm im selben Fall fällt damit auf. `prosa-datei-fehlt` entsteht eine Ebene
 darüber beim Lesen der Datei und hat deshalb keinen Selbsttest-Fall.
 
-**Ebene 2d — Regel-Konsistenz** (`workflow/rules.yaml`): jede Regel hat `on`, `assert`, `check`,
+**Ebene 2d — Regel-Konsistenz** (`workflow/<id>/rules.yaml`): jede Regel hat `on`, `assert`, `check`,
 `remedy` und `source`; `check`-Quelle kommt aus dem Fakt-Vokabular (`gh_api`, `git_state`,
 `process_exit`, `ci_run`); jede Direktive D1–D8 ist entweder durch eine Regel abgedeckt oder als
 `documented_convention` mit Begründung markiert (`direktive-ohne-abdeckung`), und Konventionen
@@ -298,7 +298,7 @@ liegt prozessual beim Lead und wird erst mit der Ebene 3 (Runtime-Replay) maschi
 Die Abgrenzung der Review-Schleife von D8 ist ein eigener harter Befund (`d8-review-schleife`)
 **mit Gegenrichtung** — eine Nicht-D8-Regel am selben Trigger schweigt.
 
-**Ebene 2e — Pipeline-Konsistenz** (`workflow/pipeline.yaml`): jeder Schritt referenziert nur
+**Ebene 2e — Pipeline-Konsistenz** (`workflow/<id>/pipeline.yaml`): jeder Schritt referenziert nur
 existierende Zustände, Labels, Rollen und Fakt-Vokabular (`unbekannte-bedingung`,
 `schritt-unerreichbar`); die Bedingungen sind strukturierte Formen (`label_check`,
 `actor_check`, `ci_check` — eine pro Eintrag), freie Schlüssel werden gemeldet. Die fünf Schritte

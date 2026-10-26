@@ -774,7 +774,7 @@ export function pipelineKonsistenz(pipeline, ctx) {
       if (!z) add('unbekannter-zustand', `${wo}/label_check: \`${v.state}\` ist kein Zustand aus workflow/states.yaml`);
       else if (!z.label) add('label-check-ohne-label', `${wo}/label_check: der Zustand \`${v.state}\` trägt kein Label — ein Label-Check darauf prüft nichts`);
     } else if (art === 'actor_check') {
-      if (!rolleOk(v.role)) add('unbekannte-rolle', `${wo}/actor_check: \`${v.role}\` ist keine Rolle aus workflow/roles.yaml und nicht \`human\``);
+      if (!rolleOk(v.role)) add('unbekannte-rolle', `${wo}/actor_check: \`${v.role}\` ist keine Rolle aus workflow/<id>/roles.yaml und nicht \`human\``);
     } else if (art === 'ci_check') {
       if (!CI_KONKLUSIONEN.includes(v.conclusion)) {
         add('unbekannte-ci-konklusion', `${wo}/ci_check: \`${v.conclusion}\` — erlaubt sind ${CI_KONKLUSIONEN.map(c => `\`${c}\``).join(', ')}`);
@@ -795,14 +795,14 @@ export function pipelineKonsistenz(pipeline, ctx) {
   for (const s of pipeline.steps ?? []) {
     const wo = `steps/\`${s.id}\``;
     if (!rolleOk(s.actor)) {
-      add('unbekannte-rolle', `${wo}: actor \`${s.actor}\` ist keine Rolle aus workflow/roles.yaml und nicht \`human\``);
+      add('unbekannte-rolle', `${wo}: actor \`${s.actor}\` ist keine Rolle aus workflow/<id>/roles.yaml und nicht \`human\``);
     }
     const rolle = rollen.get(s.actor);
     if (s.delegated) {
       if (s.actor === 'human') {
         add('delegation-an-mensch', `${wo}: \`delegated: true\`, actor ist aber \`human\` — ein Mensch bekommt kein \`--max-turns\``);
       } else if (rolle && (!rolle.delegated || !rolle.budget)) {
-        add('schritt-ohne-budget', `${wo}: der Schritt ist ein delegierter Run, \`${s.actor}\` trägt in workflow/roles.yaml aber kein \`budget\` mit \`delegated: true\` (D2 — Delegationen immer mit \`--max-turns\`)`);
+        add('schritt-ohne-budget', `${wo}: der Schritt ist ein delegierter Run, \`${s.actor}\` trägt in workflow/<id>/roles.yaml aber kein \`budget\` mit \`delegated: true\` (D2 — Delegationen immer mit \`--max-turns\`)`);
       }
     }
     for (const feld of ['state_before', 'state_after']) {

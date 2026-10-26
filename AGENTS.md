@@ -64,7 +64,7 @@ git branch -D feat/<issue-nr>-<slug>
 
 - **Lokal aufgeräumt heißt: kein Worktree, kein Branch.** Beides ist beobachtbar, und genau
   so wird es geprüft (Regel `cleanup_after_merge` in
-  [`workflow/rules.yaml`](workflow/rules.yaml)): `git worktree list` nennt
+  [`workflow/claude-pipeline/rules.yaml`](workflow/claude-pipeline/rules.yaml)): `git worktree list` nennt
   `worktrees/<issue-nr>-<slug>` nicht mehr, und `git branch --list <präfix>/<issue-nr>-<slug>`
   gibt nichts aus. Der Remote-Branch gehört **nicht** in diese Prüfung — er ist Nebenwirkung
   des Merges (Punkt darüber) und für den Lead mit seinem Tool-Set nicht ablesbar.
