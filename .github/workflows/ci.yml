@@ -55,3 +55,7 @@ jobs:
         env:
           NODE_PATH: ${{ runner.temp }}/oa-validate/node_modules
         run: node scripts/render-workflow.mjs --check
+      - name: Schema-Dokumentation gegen die Schemata prüfen (generiert == eingecheckt)
+        env:
+          NODE_PATH: ${{ runner.temp }}/oa-validate/node_modules
+        run: node scripts/generate-schema-docs.mjs --check
