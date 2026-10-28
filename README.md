@@ -31,6 +31,7 @@ Labels, CI), Agenten arbeiten parallel in eigenen Worktrees. Kontext: [Open Aust
 | [`docs/workflow.md`](docs/workflow.md) | Kanonischer Ablauf, Review-Schleife, Workflow-Wechsel, Runtime-Replay |
 | [`docs/validate-setup.md`](docs/validate-setup.md) | Prüfebenen, Skripte (Validator, Renderer, Replay), Befundkatalog, One-time Setup |
 | [`docs/specs/dsl-workflow.md`](docs/specs/dsl-workflow.md) | Spec der Workflow-DSL |
+| [`docs/schema.md`](docs/schema.md) | Generierte Schema-Doku (Keys, Datentypen, Enums, Constraints) — generiert aus `scripts/dsl-schemas.mjs`, CI prüft ≡ |
 | [`docs/workflow-hochglanz.html`](docs/workflow-hochglanz.html) | Hochglanz-Darstellung (live via [GitHub Pages](https://martinvidec.github.io/oa-sandbox-agents/)) |
 | [`agentic-workflow/`](agentic-workflow/) | Research: Entwurf, Report, Quellen |
 
