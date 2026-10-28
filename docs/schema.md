@@ -8,7 +8,7 @@
 > **Legende:** `*` = Pflichtfeld (im `required`-Array). Alle Objekte sind streng — unbekannte
 > Keys werden vom Validator (ajv) hart abgelehnt. Freitextfelder (`source`, `description`,
 > `reason` …) sind bewusst locker; wo Ebene 2 (Konsistenzprüfung) semantisch prüft, steht im
-> Schema nur ``type: string``, damit der Befund mit Begründung aus der Prüfung kommt.
+> Schema nur `type: string`, damit der Befund mit Begründung aus der Prüfung kommt.
 
 ## registry.yaml
 

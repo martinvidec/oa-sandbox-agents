@@ -11,7 +11,8 @@
 // pattern, anyOf, const) auflistet. Die Doku ist generiert — sie nicht von Hand pflegen,
 // sondern die Schemata in scripts/dsl-schemas.mjs ändern und das Skript erneut laufen lassen.
 //
-// Exit-Code: 0 = Doku geschrieben bzw. (--check) deckungsgleich, 1 = Divergenz/Fehler.
+// Exit-Codes: 0 = Doku geschrieben bzw. (--check) deckungsgleich, 1 = Divergenz (--check)
+// oder fehlende Zieldatei, 2 = un-/falsch aufgerufenes Argument.
 
 import {
   registrySchema,
@@ -128,7 +129,7 @@ const header = `# Schema-Dokumentation der Workflow-DSL
 > **Legende:** \`*\` = Pflichtfeld (im \`required\`-Array). Alle Objekte sind streng — unbekannte
 > Keys werden vom Validator (ajv) hart abgelehnt. Freitextfelder (\`source\`, \`description\`,
 > \`reason\` …) sind bewusst locker; wo Ebene 2 (Konsistenzprüfung) semantisch prüft, steht im
-> Schema nur \`${'`type: string`'}\`, damit der Befund mit Begründung aus der Prüfung kommt.
+> Schema nur \`type: string\`, damit der Befund mit Begründung aus der Prüfung kommt.
 
 `;
 
