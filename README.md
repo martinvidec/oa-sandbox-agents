@@ -11,16 +11,19 @@ Labels, CI), Agenten arbeiten parallel in eigenen Worktrees. Kontext: [Open Aust
   `roles.yaml`, `states.yaml`, `rules.yaml` und `pipeline.yaml`.
 - **Generiertes Interface:** [`AGENTS.md`](AGENTS.md) ist dünn (Agent-Contract + aktiv-Block),
   die Details stehen generiert in [`WORKFLOW.md`](WORKFLOW.md) — Rollen-, Label-, Übergangs- und
-  Pipeline-Tabellen, erzeugt mit `node scripts/render-workflow.mjs --write`. CI prüft generiert
-  gegen eingecheckt.
+  Pipeline-Tabellen, erzeugt mit `node scripts/render-workflow.mjs --write`. Daneben wird die
+  Schema-Doku generiert: [`docs/schema.md`](docs/schema.md) aus
+  [`scripts/dsl-schemas.mjs`](scripts/dsl-schemas.mjs) via
+  `node scripts/generate-schema-docs.mjs`. CI prüft beides (generiert gegen eingecheckt).
 - **Prüfung in drei Ebenen:** Validator (Schema/Linter, 160 Selbsttest-Fälle, in CI),
-  Generierungs-Abgleich (generiert ≡ eingecheckt) und
+  Generierungs-Abgleich (WORKFLOW.md + AGENTS.md-Aktiv-Block + docs/schema.md —
+  generiert ≡ eingecheckt, in CI) und
   [Runtime-Replay](docs/validate-setup.md) (`scripts/replay-workflow.mjs` — prüft nach jedem
   Merge die gelebte Ausführung des Zyklus gegen die Regeln, Quelle: GitHub-Timeline + lokaler
   Git-Zustand).
 - **Rollen:** Martin (Owner, mergt als Einziger) — Lead (Hermes) — Coder (Claude Code) —
   Reviewer — Researcher/Tester. Der Cleanup nach dem Merge ist der 5. Pipeline-Schritt.
-- **Dogfooding:** das Framework entwickelt sich selbst — rund 30 validierte Pipeline-Zyklen.
+- **Dogfooding:** das Framework entwickelt sich selbst — rund 32 validierte Pipeline-Zyklen.
 
 ## Dokumentation
 
